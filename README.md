@@ -6,7 +6,7 @@ matches each image to the right blog post: a red-fox post gets the red-fox
 photo, never the wolf. The production-critical part isn't finding a match —
 it's a **mismatch guard** that refuses a wrong pairing and explains why.
 
-**Status: in progress.** Steps 1–2 of 5 are done (see
+**Status: in progress.** Steps 1–3 of 5 are done (see
 [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) for the step-by-step record).
 This README will fill in as later steps land — see Limitations below for
 exactly what isn't built yet.
@@ -72,7 +72,8 @@ project.
 
 Vision/embeddings: requires a free Gemini API key from
 [Google AI Studio](https://aistudio.google.com/apikey) (no credit card) —
-`GEMINI_API_KEY` in `.env`. *(Wiring lands in Step 3.)*
+`GEMINI_API_KEY` in `.env`. Vision tagging (`vision.py`, `jobs/classify.py`)
+is implemented and unit-tested; embeddings land in Step 4.
 
 `run:` / `seed:` commands for the full API are not available yet — see
 [`capstone.yaml`](capstone.yaml), which is filled in as each phase ships.
@@ -84,11 +85,15 @@ Step 5.* Number will be reported here and must match `EVIDENCE.md`.
 
 ## Limitations (honest, as of this writing)
 
-- No vision pipeline yet — no images have actually been tagged.
+- Vision tagging (`vision.py`, `jobs/classify.py`) is built and unit-tested
+  against a live Gemini smoke test, but has **not yet been run end-to-end**
+  against the real database or a real image corpus — no images have
+  actually been tagged and persisted yet.
+- No image corpus committed yet (~50 licensed-free images still to be
+  gathered).
 - No embeddings/matching yet — the guard is proven only on hand-built mock
   candidates (`tests/test_guard.py`), not real ranked results.
 - No API/review surface yet.
-- No image corpus committed yet.
 - `vector(1536)` in the migrations is a placeholder dimension; will be
   corrected to match Gemini's embedding output size in Step 4.
 

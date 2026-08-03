@@ -139,3 +139,83 @@ for embeddings — no `anthropic` SDK, no paid API of any kind.
 `jobs/classify.py` (async, semaphore-limited, tenacity retries, idempotent,
 cost-logged to `model_calls`). Blocked on a `GEMINI_API_KEY` from the user
 (free, Google AI Studio, no card).
+
+---
+
+## Step 3 — batch vision classification (2026-08-03)
+
+**Scope:** `vision.py` + `jobs/classify.py`, against Gemini Flash. Scope
+correction from the original doc: embeddings (`image_vectors`) are Step 4,
+not Step 3 — the "Done when" line under the old Step 3 heading mentioned
+`image_vectors`, which conflicted with the Follow-up Prompts section
+(embeddings explicitly listed under Step 4). Went with the cleaner split:
+Step 3 is vision tagging only (`image_tags` + `model_calls`), matching the
+same "prove one thing before debugging two at once" principle Step 1 used
+for the guard.
+
+**What was built:**
+- [`config.py`](config.py) — new. Centralizes `gemini_api_key`,
+  `vision_model` (default `"gemini-flash-latest"`, an alias so it doesn't
+  need re-pinning as Google rotates versions — confirmed live: currently
+  resolves to `gemini-3.6-flash`), `embedding_model` (unused until Step 4),
+  and `sim_floor`/`conf_floor` (0.35/0.6, per BRIEF.md's suggested
+  starting values — one `conf_floor` used both at ingestion time here and
+  at matching time by `guard.guard`, so tagging-time flagging and
+  matching-time distrust never drift apart). `db.py` refactored to import
+  `Settings` from here instead of defining its own.
+- [`vision.py`](vision.py) — `tag_image()` (async, one Gemini call),
+  `parse_vision_output()` and `derive_status()` (pure, no network — tested
+  offline). Structured output uses
+  `response_json_schema=VisionTagOutput.model_json_schema()`, **not**
+  `response_schema=VisionTagOutput` — the latter 400'd
+  (`Unknown name "additional_properties"`) because `VisionTagOutput`'s
+  `extra="forbid"` config schema-serializes into a field Gemini's
+  constrained `response_schema` subset rejects; `response_json_schema`
+  accepts the raw Pydantic JSON Schema directly and works.
+- [`jobs/classify.py`](jobs/classify.py) — `run_classification_job()`:
+  fetches images with no `image_tags` row (idempotency), tags them under an
+  `asyncio.Semaphore`, retries only 429/5xx via tenacity's `AsyncRetrying`
+  (`_is_transient`), logs one `model_calls` row per image (success or
+  total failure, with the real attempt count), and writes `image_tags` —
+  `invalid_output` rows (validation failure or exhausted retries) skip
+  `ImageTagRecord` entirely and go through a raw insert instead, since that
+  record type requires a real `subject` and an invalid/failed call has
+  none; `Subject.UNKNOWN` (a valid enum member) is what `ImageTagRecord`
+  is for when the model *did* answer, just with "none of these."
+
+**Decisions / tradeoffs:**
+- DB writes inside the async job use `db.py`'s existing **sync** psycopg
+  connections (one per operation), not an async connection pool. Blocks
+  the event loop briefly per write; acceptable at ~50 images with
+  concurrency 5, would need revisiting for a much larger corpus.
+- Per-call cost logging is one `model_calls` row per image representing
+  the final outcome (with the correct attempt count), not one row per
+  individual retry attempt — failed attempts aren't billed by Gemini, so
+  no cost data would be lost, only some retry-level granularity.
+- Pricing hardcoded per resolved model version (`gemini-3.6-flash`:
+  $1.50/$7.50 per 1M input/output tokens, output price includes thinking
+  tokens) with a fallback if the alias resolves elsewhere later — checked
+  live against ai.google.dev's pricing page, not from training data (this
+  model didn't exist as of this assistant's January 2026 cutoff).
+
+**Verified:**
+- Live smoke tests (not committed, temp file deleted after): text-only
+  structured output round-trip; then a real photo (fetched via browser
+  from Wikimedia Commons for local testing only — not corpus-suitable
+  licensing) → correctly tagged `red_fox`, confidence 0.98, full
+  `VisionTagOutput` validation passed. Confirmed a live 503 during testing
+  retried correctly.
+- `pytest -v` — 24/24 passing (7 guard + 10 vision + 7 classify), zero live
+  network calls in the suite itself (all Gemini/DB interaction is mocked
+  or injected).
+
+**Not yet done:** a real end-to-end run of `run_classification_job()`
+against the live Supabase project and an actual image corpus — blocked on
+(a) `DATABASE_URL` in `.env`, still outstanding since Step 2, and (b) the
+corpus itself (~50 licensed-free images), not gathered yet. `EVIDENCE.md`
+reflects this honestly — checkboxes are proven at the unit-test level, not
+claimed as a full corpus run.
+
+**Next:** resolve the two blockers above, do a real corpus run, then
+Step 4 — `embeddings.py`, `matching.py`, wiring the existing guard to real
+candidates.
