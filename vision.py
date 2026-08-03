@@ -15,22 +15,15 @@ from google import genai
 from google.genai import types
 from pydantic import ValidationError
 
-from config import settings
+from config import (
+    FALLBACK_GENERATE_CONTENT_PRICING_USD,
+    GENERATE_CONTENT_PRICING_USD,
+    settings,
+)
 from schemas import TagStatus, VisionTagOutput
 from vocab import Subject, prompt_vocab_block
 
 _client = genai.Client(api_key=settings.gemini_api_key)
-
-# $ per token, keyed by the model version Gemini reports back (settings.
-# vision_model may resolve to a different version than requested, e.g. via
-# an alias). Source: ai.google.dev/gemini-api/docs/pricing, checked
-# 2026-08-03. Output price already includes thinking tokens.
-_PRICING_PER_TOKEN_USD: dict[str, dict[str, float]] = {
-    "gemini-3.1-flash-lite": {"input": 0.25e-6, "output": 1.50e-6},
-    "gemini-3.5-flash-lite": {"input": 0.30e-6, "output": 2.50e-6},
-    "gemini-3.6-flash": {"input": 1.50e-6, "output": 7.50e-6},
-}
-_FALLBACK_PRICING_USD = _PRICING_PER_TOKEN_USD["gemini-3.1-flash-lite"]
 
 _PROMPT_TEMPLATE = """Identify the main animal subject in this image using \
 the controlled vocabulary below. Pick the closest canonical id, or \
@@ -100,7 +93,7 @@ async def tag_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> Vision
         else 0
     )
     model_version = resp.model_version or settings.vision_model
-    pricing = _PRICING_PER_TOKEN_USD.get(model_version, _FALLBACK_PRICING_USD)
+    pricing = GENERATE_CONTENT_PRICING_USD.get(model_version, FALLBACK_GENERATE_CONTENT_PRICING_USD)
     cost_usd = input_tokens * pricing["input"] + output_tokens * pricing["output"]
 
     parsed, error = parse_vision_output(resp.text)

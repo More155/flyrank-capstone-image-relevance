@@ -130,6 +130,39 @@ actual error.
 
 ---
 
+## 2026-08-03 — Step 4: guessed at an API field that doesn't exist
+
+**Where AI was wrong:** first draft of `embeddings.py`'s cost tracking
+assumed `embed_content`'s response would carry a `usage_metadata`-style
+field the way `generate_content` does — specifically guessed at
+`resp.metadata[0].billable_character_count`, invented rather than looked
+up, because it looked plausible by analogy to the vision-call cost code
+written moments earlier.
+
+**What caught it:** printed the actual response object
+(`resp.model_dump(exclude={'embeddings'})`) before trusting the guess,
+since this SDK version and this specific model postdate this assistant's
+training data. `resp.metadata` was `None` — the field doesn't exist at
+all for embeddings in this SDK version.
+
+**What changed:** switched to estimating input tokens from
+`len(text) // 4`, Gemini's own documented character-to-token rule of
+thumb, applied to the actual input text rather than a response field.
+Cost numbers are now honestly approximate (labeled as such in
+`embeddings.py`'s comment) instead of silently wrong from a field that
+would have just returned `None`/0 forever.
+
+**Also cleaned up while building this step, not a functional bug but
+worth naming:** first draft of `extraction.py` imported private
+underscore-prefixed constants directly from `vision.py`
+(`from vision import _PRICING_PER_TOKEN_USD`) to avoid duplicating the
+Gemini pricing table. That's exactly the kind of cross-module reach the
+underscore convention exists to flag. Moved the table into `config.py` as
+a properly public, shared constant instead of leaving the private import
+in place because it "worked."
+
+---
+
 ## Ongoing
 
 Each subsequent phase gets an entry here noting anything AI got wrong or had

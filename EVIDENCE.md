@@ -92,10 +92,37 @@ done.
 
 ## Matching system
 
-- [ ] Image and post embeddings are stored; posts return ranked image
-      suggestions. — *pending: Step 4*
-- [ ] Semantic matching works for equivalent concepts — "red fox" matches
-      "Vulpes vulpes". — *pending: Step 4*
+- [x] Image and post embeddings are stored; posts return ranked image
+      suggestions.
+
+  All 48 image captions embedded (`jobs/embed_images.py`) and all 8 seed
+  posts embedded on first access (`matching.ensure_post_embedded`), both
+  via `gemini-embedding-001` at 768 dims (native output is 3072, over
+  pgvector's HNSW index limit of 2000 — see
+  `migrations/004_fix_vector_dimension.sql`). Real pgvector top-k query
+  (`matching.rank_images_for_post`) against the live DB:
+
+  ```
+  $ .venv/bin/python -m scripts.verify_matching
+  PASS - fox post ranks fox top and suggests it
+  ```
+
+  `'Getting to Know the Red Fox'` (post_subject=red_fox) → top-3:
+  `red_fox@0.842, red_fox@0.842, red_fox@0.841` → `verdict=suggest
+  reason=ok`.
+
+- [x] Semantic matching works for equivalent concepts — "red fox" matches
+      "Vulpes vulpes".
+
+  `'The Secretive World of Vulpes Vulpes'` — the post body never contains
+  the word "fox," only the Latin binomial — still ranks real fox images top
+  and gets suggested:
+
+  ```
+  $ .venv/bin/python -m scripts.verify_matching
+  PASS - "Vulpes vulpes" paraphrase post still matches fox
+  ```
+  top-3: `red_fox@0.797, red_fox@0.796, red_fox@0.793`.
 
 ## Safety layer
 
@@ -113,6 +140,20 @@ done.
   7 passed in 0.06s
   ```
 
+  **Same case, proven with real data** (source brief's Probe 3 — force the
+  wolf as a candidate for the fox post): took a real `gray_wolf` image's
+  actual embedding-based similarity to the real "Getting to Know the Red
+  Fox" post (0.785 — genuinely close, confirming the brief's premise that
+  fox/wolf sit near each other in embedding space) and forced it through
+  the unmodified guard:
+
+  ```
+  $ .venv/bin/python -m scripts.verify_matching
+  PASS - forced wolf candidate on fox post is rejected with a reason
+  ```
+  `verdict=no_match reason=subject_mismatch explanation="best is gray_wolf,
+  post is red_fox"`.
+
 - [x] Rejections include a human-readable explanation.
 
   From `guard.py`, the SUBJECT_MISMATCH branch:
@@ -120,7 +161,8 @@ done.
   explanation=f"best is {best.subject.value}, post is {post_subject.value}"
   ```
   Produces e.g. `"best is gray_wolf, post is red_fox"` — asserted in
-  `tests/test_guard.py::test_wrong_top_hit_with_no_rescue_available_is_no_match`.
+  `tests/test_guard.py::test_wrong_top_hit_with_no_rescue_available_is_no_match`
+  and confirmed live above.
 
 - [x] When no image clears the bar, the system answers "no confident match"
       with reasons.
@@ -132,6 +174,24 @@ done.
   guard(...) → verdict=NO_MATCH, reason=BELOW_SIMILARITY_FLOOR,
   explanation="top candidate 0.20 below floor 0.35"
   ```
+
+  **Real case** (source brief's Probe 4): the seeded "Majestic African
+  Elephant" post — no elephant in the corpus at all, and its subject
+  extraction correctly came back `unknown` — gets refused, not guessed:
+
+  ```
+  $ .venv/bin/python -m scripts.verify_matching
+  PASS - post with no good image gets no_match, not a guess
+  ```
+  `verdict=no_match reason=subject_mismatch explanation="best is red_fox,
+  post is unknown"` (best real candidate was only 0.739 similarity — a
+  weak match on top of the subject mismatch).
+
+  **Also observed for free**, not a synthetic test: the "Why Dogs Make
+  Great Companions" post's top real candidate was a `gray_wolf` image at
+  0.756 similarity — the guard's rescue path fired for real, promoting a
+  `domestic_dog` candidate at 0.744 (`reason=promoted_over_top_hit`)
+  instead of either accepting the wrong top hit or refusing outright.
 
 ## Backend
 
@@ -163,14 +223,21 @@ done.
 
 ## Quality & documentation
 
-- [x] Automated tests cover schema validation *(partial — guard covered;
-      vision-schema tests pending Step 3)*, mismatch rejection, and matching
-      accuracy *(matching pending Step 4)*.
+- [x] Automated tests cover schema validation, mismatch rejection, and
+      matching accuracy.
 
-  All 7 must-pass guard cases green: `.venv/bin/pytest -v` → `7 passed`.
+  `.venv/bin/pytest -v` → `30 passed` (7 guard + 10 vision + 7 classify + 6
+  extraction — schema validation covered for both vision tagging and post
+  subject extraction; mismatch rejection covered on mocks). Matching
+  accuracy itself is proven live, not by a pytest mock — see
+  `scripts/verify_matching.py` above and the 48/48 (100%) corpus-label
+  match under "AI processing." The formal top-1 precision *eval script* is
+  still Step 5; this is the same underlying signal, gathered early.
 
 - [ ] A small labeled evaluation dataset measures top-1 precision — the
-      number is in your README. — *pending: Step 5*
+      number is in your README. — *pending: Step 5 (eval script itself;
+      the labels already exist in corpus.py and the matching pipeline
+      already produces 100% agreement in an ad-hoc check above)*
 - [ ] README with architecture explanation and diagram; submission-pack
       files present. — *README skeleton added 2026-08-03; diagram + final
       content pending later phases.*

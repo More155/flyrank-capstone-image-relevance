@@ -5,7 +5,7 @@
 name: image-relevance-auto-tagging
 
 run: "TODO (Step 5): uvicorn api:app --reload"
-seed: ".venv/bin/python -m scripts.seed_corpus && .venv/bin/python -m jobs.classify"
+seed: ".venv/bin/python -m scripts.seed_corpus && .venv/bin/python -m jobs.classify && .venv/bin/python -m jobs.embed_images && .venv/bin/python -m scripts.seed_posts"
 test: ".venv/bin/pytest -v"
 base_url: "TODO (Step 5): http://localhost:8000"
 
