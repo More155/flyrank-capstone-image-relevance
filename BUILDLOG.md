@@ -42,6 +42,37 @@ cost or credentials are involved.
 
 ---
 
+## 2026-08-03 — Step 3: Gemini structured output, first attempt failed
+
+**Where AI helped:** wrote `vision.py` and `jobs/classify.py`, but didn't
+just assume the Gemini structured-output API would work as documented from
+training-data knowledge — ran a live smoke test against the real API before
+building the batch job around it, since the model in use
+(`gemini-3.6-flash`, resolved via the `gemini-flash-latest` alias) postdates
+this assistant's January 2026 training cutoff.
+
+**Where AI was wrong:** first attempt passed
+`response_schema=VisionTagOutput` (the Pydantic class directly) per the
+SDK's documented pattern. Gemini rejected it: `400 INVALID_ARGUMENT —
+Unknown name "additional_properties"`. Root cause: `VisionTagOutput` sets
+`extra="forbid"`, which Pydantic serializes into `additionalProperties:
+false` in its JSON Schema — a field Gemini's constrained `response_schema`
+subset doesn't accept, even though the SDK is supposed to convert Pydantic
+models automatically.
+
+**What changed:** switched to `response_json_schema=VisionTagOutput.model_json_schema()`
+— a separate, less-constrained parameter that accepts the raw Pydantic JSON
+Schema directly. Verified against both a text-only prompt and a real image
+before writing it into `vision.py`.
+
+**Also caught mid-test:** a live `503 UNAVAILABLE` from Gemini during manual
+testing — not a bug, but the exact transient-failure case `jobs/classify.py`
+needs to retry. Used it as a natural confirmation that treating 5xx as
+retryable (not a validation failure) was the right call, rather than
+inventing a hypothetical test case.
+
+---
+
 ## Ongoing
 
 Each subsequent phase gets an entry here noting anything AI got wrong or had

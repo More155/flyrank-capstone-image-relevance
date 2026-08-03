@@ -12,20 +12,14 @@ from typing import Iterator
 
 import psycopg
 from pgvector.psycopg import register_vector
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    database_url: str
-
-
-settings = Settings()
+from config import settings
 
 
 @contextmanager
 def get_connection() -> Iterator[psycopg.Connection]:
+    if settings.database_url is None:
+        raise RuntimeError("DATABASE_URL not set in .env")
     with psycopg.connect(settings.database_url) as conn:
         register_vector(conn)
         yield conn

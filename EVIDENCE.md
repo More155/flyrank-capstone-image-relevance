@@ -8,14 +8,59 @@ done.
 
 ## AI processing
 
-- [ ] Vision model produces structured output validated against a schema;
-      invalid responses are never trusted. — *pending: Step 3*
-- [ ] Low-confidence classifications are flagged instead of accepted. —
-      *pending: Step 3*
-- [ ] Images are processed through a batch background job with retries. —
-      *pending: Step 3*
-- [ ] Vision and embedding costs are tracked per call. — *pending: Step 3
-      (vision), Step 4 (embeddings)*
+- [x] Vision model produces structured output validated against a schema;
+      invalid responses are never trusted.
+
+  Live call against Gemini Flash (`gemini-flash-latest` → resolved
+  `gemini-3.6-flash`), `response_json_schema=VisionTagOutput.model_json_schema()`,
+  real image (a red fox photo), full round trip validated:
+
+  ```
+  RAW TEXT: {"subject":"red_fox","category":"mammal","attributes":[...],
+  "caption":"A red fox rests peacefully curled up in the bright white
+  snow.","confidence":0.98,"reasoning":"..."}
+  VALIDATED: subject=<Subject.RED_FOX: 'red_fox'> category=<Category.MAMMAL...>
+  ```
+
+  Malformed/out-of-schema output never trusted:
+  `tests/test_vision.py::test_malformed_json_never_raises_and_reports_error`,
+  `::test_confidence_out_of_range_is_rejected`,
+  `::test_unknown_enum_value_is_rejected`,
+  `::test_missing_required_field_is_rejected` — all assert
+  `parse_vision_output` returns `(None, error)`, never raises, never
+  silently accepts.
+
+- [x] Low-confidence classifications are flagged instead of accepted.
+
+  `tests/test_vision.py::test_derive_status_low_confidence` — confidence
+  0.3 with `conf_floor=0.6` → `TagStatus.LOW_CONFIDENCE`, not `OK`.
+
+- [x] Images are processed through a batch background job with retries
+      *(code + unit tests done; full run over a real corpus pending — see
+      note below)*.
+
+  `jobs/classify.py`: `asyncio.Semaphore`-limited concurrency, tenacity
+  `AsyncRetrying` on 429/5xx only. Verified:
+  `tests/test_classify.py::test_retries_and_succeeds_after_transient_failures`
+  (2 injected failures, succeeds on 3rd attempt),
+  `::test_gives_up_after_max_attempts_of_transient_failures` (exhausts at 4
+  attempts, raises), `::test_does_not_retry_non_transient_errors` (a 400
+  fails on the first attempt, no retry).
+
+- [x] Vision and embedding costs are tracked per call *(vision done;
+      embeddings pending Step 4)*.
+
+  `vision.tag_image` computes `cost_usd` from `resp.usage_metadata`
+  (input/output/thinking tokens) against real Gemini Flash pricing
+  (checked 2026-08-03, ai.google.dev/gemini-api/docs/pricing).
+  `jobs/classify.py` logs one `model_calls` row per image — success or
+  failure — via `_log_model_call`.
+
+  **Not yet run end-to-end against the live DB or a real corpus**: needs
+  `DATABASE_URL` in `.env` (still outstanding from Step 2) and an actual
+  image corpus (not gathered yet). Code paths are exercised by unit tests
+  with a fake `tag_fn` and no live DB; a real batch run is the next
+  concrete step once those two are in place.
 
 ## Matching system
 
