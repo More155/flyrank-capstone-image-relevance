@@ -5,6 +5,15 @@ architecture, the build sequence, and the prompt to start from.
 
 Companion files (already written, treat as given): `vocab.py`, `schemas.py`.
 
+> **Correction (2026-08-03):** this doc originally specified the `anthropic`
+> SDK for vision, which is not free. The actual source assignment (FlyRank
+> Backend Track capstone, "AI Image Understanding & Content Matching Engine")
+> requires a strict $0 stack: **Gemini Flash free tier** for vision,
+> **Gemini embeddings free tier** (`text-embedding-004`) for embeddings — no
+> credit card, ever. Stack table and Flow A below are corrected. Everything
+> already built (Step 1's guard, Step 2's data model) is provider-agnostic
+> and unaffected.
+
 ---
 
 ## 1. What we're building
@@ -71,8 +80,8 @@ serves as the eval set for the precision number.
 |---|---|---|
 | Language | Python 3.11+ | |
 | Schema + validation | Pydantic v2 | One definition serves vision validation, DB shape, and API |
-| Vision | `anthropic` SDK | Structured output via **forced tool use** |
-| Embeddings | one embedding model | Same model for captions AND posts — non-negotiable |
+| Vision | Gemini Flash (`google-genai`, free tier) | Structured output via `response_schema` JSON mode |
+| Embeddings | Gemini embeddings (`text-embedding-004`, free tier) | Same model for captions AND posts — non-negotiable |
 | DB | Postgres + pgvector (Supabase) | Hand-written SQL migrations, no ORM |
 | Driver | `psycopg` 3 | |
 | API | FastAPI | Pydantic models reused directly |
@@ -90,7 +99,7 @@ Two runtime flows. Keeping them separate is the whole mental model.
 
 ```
 image file
-  → vision model (forced tool use)
+  → vision model (Gemini Flash, response_schema JSON mode)
   → Pydantic validate → VisionTagOutput
   → derive status (ok | low_confidence | unknown_subject | invalid_output)
   → INSERT image_tags
@@ -237,7 +246,7 @@ similarity query.
 
 ### Step 3 — batch classification job
 
-`vision.py` (forced tool use → `VisionTagOutput`), `jobs/classify.py`
+`vision.py` (Gemini Flash `response_schema` → `VisionTagOutput`), `jobs/classify.py`
 (async, semaphore-limited, tenacity retries, idempotent, cost-logged).
 
 **Done when:** running it over the corpus fills `image_tags` + `image_vectors`,
