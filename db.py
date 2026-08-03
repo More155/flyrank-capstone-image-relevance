@@ -20,6 +20,12 @@ from config import settings
 def get_connection() -> Iterator[psycopg.Connection]:
     if settings.database_url is None:
         raise RuntimeError("DATABASE_URL not set in .env")
-    with psycopg.connect(settings.database_url) as conn:
+    # DATABASE_URL points at Supabase's transaction-mode pooler (the direct
+    # host is IPv6-only and unreachable from this network). PgBouncer in
+    # transaction mode doesn't give each logical connection its own
+    # prepared-statement namespace, so psycopg3's automatic server-side
+    # prepare collides across pooled connections ("prepared statement
+    # already exists"). prepare_threshold=None disables it.
+    with psycopg.connect(settings.database_url, prepare_threshold=None) as conn:
         register_vector(conn)
         yield conn

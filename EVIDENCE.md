@@ -35,17 +35,39 @@ done.
   `tests/test_vision.py::test_derive_status_low_confidence` — confidence
   0.3 with `conf_floor=0.6` → `TagStatus.LOW_CONFIDENCE`, not `OK`.
 
-- [x] Images are processed through a batch background job with retries
-      *(code + unit tests done; full run over a real corpus pending — see
-      note below)*.
+- [x] Images are processed through a batch background job with retries.
 
   `jobs/classify.py`: `asyncio.Semaphore`-limited concurrency, tenacity
-  `AsyncRetrying` on 429/5xx only. Verified:
+  `AsyncRetrying` on 429/5xx only. Unit-tested:
   `tests/test_classify.py::test_retries_and_succeeds_after_transient_failures`
   (2 injected failures, succeeds on 3rd attempt),
   `::test_gives_up_after_max_attempts_of_transient_failures` (exhausts at 4
   attempts, raises), `::test_does_not_retry_non_transient_errors` (a 400
   fails on the first attempt, no retry).
+
+  **Real end-to-end run**, live Supabase project + a real 48-image corpus
+  (`corpus.py`, Unsplash photos, seeded via `scripts/seed_corpus.py`):
+
+  ```
+  $ .venv/bin/python -m jobs.classify
+  classification job done: {'ok': 48}
+  ```
+
+  (Two runs: the first hit `gemini-3.6-flash`'s free-tier quota — 20
+  requests/day — after 19 images; switching `vision_model` to
+  `gemini-3.1-flash-lite`, which had separate quota, finished the remaining
+  29. See BUILDLOG.md.) All 48 images landed `status='ok'`; tagged subject
+  matches the corpus's ground-truth label for all 48/48 (100%) — a real
+  precision signal, not yet the formal Step 5 eval script, but the same
+  underlying check.
+
+  One genuine catch along the way: one "gray wolf" Unsplash search result
+  was actually a coyote (bad alt-text on Unsplash's end). The model
+  correctly returned `subject=unknown` at confidence 0.95 rather than
+  force-fitting it to `gray_wolf` — exactly the flag-don't-guess behavior
+  this checkbox is about. Swapped the corpus entry for a verified wolf photo
+  since this corpus doubles as eval ground truth (see BUILDLOG.md for the
+  full callout).
 
 - [x] Vision and embedding costs are tracked per call *(vision done;
       embeddings pending Step 4)*.
@@ -53,14 +75,20 @@ done.
   `vision.tag_image` computes `cost_usd` from `resp.usage_metadata`
   (input/output/thinking tokens) against real Gemini Flash pricing
   (checked 2026-08-03, ai.google.dev/gemini-api/docs/pricing).
-  `jobs/classify.py` logs one `model_calls` row per image — success or
-  failure — via `_log_model_call`.
+  `jobs/classify.py` logs one `model_calls` row per image, success or
+  failure, including the 29 quota-exhausted attempts from the
+  `gemini-3.6-flash` run (at $0/0 tokens — never billed):
 
-  **Not yet run end-to-end against the live DB or a real corpus**: needs
-  `DATABASE_URL` in `.env` (still outstanding from Step 2) and an actual
-  image corpus (not gathered yet). Code paths are exercised by unit tests
-  with a fake `tag_fn` and no live DB; a real batch run is the next
-  concrete step once those two are in place.
+  ```sql
+  select count(*), round(sum(cost_usd), 6), sum(input_units), sum(output_units)
+  from model_calls;
+  -- (78, 0.129250, 64904, 13775)
+
+  select ok, count(*) from model_calls group by ok;
+  -- (false, 29), (true, 49)
+  ```
+
+  Notional cost at paid-tier rates; actual billing was $0 (free tier).
 
 ## Matching system
 
