@@ -108,3 +108,34 @@ similarity.
 **Next:** Step 3 — `vision.py` (forced tool use → `VisionTagOutput`),
 `jobs/classify.py` (async, semaphore-limited, tenacity retries, idempotent,
 cost-logged to `model_calls`).
+
+---
+
+## Correction — Gemini Flash, not Anthropic, and compliance scaffolding (2026-08-03)
+
+The user shared the actual official capstone brief (a PDF: FlyRank Backend
+Track, "AI Image Understanding & Content Matching Engine"). It has a strict
+$0 constraint this project's own `BRIEF.md` had missed: **Gemini Flash free
+tier** for vision, **Gemini embeddings free tier** (`text-embedding-004`)
+for embeddings — no `anthropic` SDK, no paid API of any kind.
+
+**What changed:**
+- `BRIEF.md`'s stack table and Flow A pseudocode updated to Gemini Flash /
+  Gemini embeddings. Nothing built in Steps 1–2 required rework — `guard.py`
+  is provider-agnostic, and the `vector(1536)` placeholder was already
+  flagged as pending the real model choice.
+- Added the submission-pack files the source brief requires that were
+  missing: [`README.md`](README.md), [`LICENSE`](LICENSE) (MIT),
+  [`capstone.yaml`](capstone.yaml), [`EVIDENCE.md`](EVIDENCE.md),
+  [`BUILDLOG.md`](BUILDLOG.md). Full detail on the AI-usage angle of this
+  correction is in `BUILDLOG.md`, not duplicated here — this log stays
+  focused on technical decisions.
+- `EVIDENCE.md` seeded with proof for what's genuinely done so far (guard
+  tests, DB migrations + index confirmation) and explicit `pending: Step N`
+  markers for everything else — no boxes checked without pasted proof.
+
+**Next:** Step 3, now against Gemini Flash — `vision.py`
+(`google-genai`, `response_schema` JSON mode → `VisionTagOutput`),
+`jobs/classify.py` (async, semaphore-limited, tenacity retries, idempotent,
+cost-logged to `model_calls`). Blocked on a `GEMINI_API_KEY` from the user
+(free, Google AI Studio, no card).
