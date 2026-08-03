@@ -294,3 +294,100 @@ classification job done: {'ok': 48}
 **Next:** Step 4 — `embeddings.py`, `matching.py`, wiring the existing
 guard to real candidates. `vector(1536)` placeholder needs correcting to
 whatever `gemini-embedding-001` actually outputs before that lands.
+
+---
+
+## Step 4 — embeddings, matching, real guard (2026-08-03)
+
+**Scope:** `embeddings.py`, `matching.py`, post subject extraction, wiring
+`guard.guard()` (untouched) to real ranked candidates. Per the source
+brief's Step 4 instruction: don't modify `guard.py`'s logic, only build its
+inputs — confirmed true here; `guard.py` has zero changes since Step 1.
+
+**What was built:**
+- [`embeddings.py`](embeddings.py) — `embed_text()`, async, one Gemini
+  call. `gemini-embedding-001` at `output_dimensionality=768` (native
+  output is 3072, which exceeds pgvector's HNSW index limit of 2000 — see
+  the dimension fix below), `task_type=SEMANTIC_SIMILARITY` since captions
+  and posts are compared symmetrically, not query→document.
+- [`migrations/004_fix_vector_dimension.sql`](migrations/004_fix_vector_dimension.sql)
+  — corrects the `vector(1536)` placeholder from Step 2 to `vector(768)`
+  on both `image_vectors` and `post_vectors` (drop HNSW index, alter
+  column type, recreate index — safe, both tables were still empty).
+  Applied live.
+- [`extraction.py`](extraction.py) — `extract_subject()`, same
+  structured-output pattern as `vision.py` (`response_json_schema` against
+  `SubjectExtraction`), applied to post title+body instead of pixels, per
+  `schemas.py`'s own docstring ("Same idea, applied to post text instead
+  of pixels"). Reuses `settings.vision_model` — no separate model needed
+  for a plain text-in/JSON-out call.
+- [`matching.py`](matching.py) — `ensure_post_embedded()` (lazy, cached —
+  no-ops if `post_vectors` already has a row, matching Flow B's "ensure
+  post embedded (once, cached)"), `rank_images_for_post()` (pgvector
+  top-k via `<=>`, returns `Candidate` objects already sorted by
+  similarity descending — the guard's `candidates[0] = best` assumption),
+  `match_images_for_post()` (the full pipeline: embed → rank → `guard()`).
+- [`corpus.py`](corpus.py) doubles as eval ground truth (already true from
+  Step 3); [`posts_seed.py`](posts_seed.py) — 8 sample posts: one per
+  species, a paraphrase case ("Vulpes vulpes," no literal "fox" anywhere in
+  the text), and a deliberate no-coverage case (elephant — not in
+  `vocab.py` at all), matching the source brief's demo script (§13).
+- [`scripts/seed_posts.py`](scripts/seed_posts.py) — idempotent (on
+  title), extracts + stores `posts.subject`/`subject_confidence`, logs
+  `model_calls` (`CallKind.EXTRACT_SUBJECT`).
+- [`jobs/embed_images.py`](jobs/embed_images.py) — batch-embeds every
+  `image_tags` row without an `image_vectors` row yet. Same idempotency
+  pattern as `jobs/classify.py`.
+- [`scripts/verify_matching.py`](scripts/verify_matching.py) — a live
+  (not pytest) script reproducing the source brief's acceptance probes
+  2-4 against the real DB: fox post ranks fox top, a forced real wolf
+  candidate on the fox post gets rejected, the paraphrase post still
+  matches, the elephant post gets `no_match`. Kept out of the pytest suite
+  deliberately — pytest never touches the network or live DB in this
+  project; this script is the live counterpart.
+- [`tests/test_extraction.py`](tests/test_extraction.py) — 6 tests
+  mirroring `test_vision.py`'s schema-validation coverage for
+  `extraction.parse_extraction_output`.
+
+**Decisions / a couple of real corrections along the way:**
+- `embed_content`'s response has no `usage_metadata` at all in this SDK
+  version (verified live — `resp.metadata` is `None`), unlike
+  `generate_content`. First draft of `embeddings.py` guessed at a
+  `billable_character_count` field that doesn't exist; caught by actually
+  printing the response object before trusting the guess. Now estimates
+  input tokens from `len(text) // 4` (Gemini's own documented rule of
+  thumb) instead.
+- Moved the `generate_content` pricing table from a private constant in
+  `vision.py` into `config.py` as `GENERATE_CONTENT_PRICING_USD` /
+  `FALLBACK_GENERATE_CONTENT_PRICING_USD` — `extraction.py` needs the same
+  table (same model family), and reaching into another module's
+  underscore-prefixed "private" constant via `from vision import
+  _PRICING_PER_TOKEN_USD` (the first draft did this) is exactly the kind
+  of thing that constant naming convention exists to prevent.
+- `top_k=10` default for `rank_images_for_post` — generous enough that a
+  same-species rescue candidate is very likely to be within the fetched
+  window at this corpus size (48 images, ~8/species), without fetching
+  the entire table on every request.
+
+**Verified (live, against the real DB and the real 48-image corpus):**
+- All 48 images embedded (`jobs/embed_images.py`): `{'ok': 48, 'failed': 0}`.
+- All 8 posts seeded with extracted subjects, including the paraphrase
+  case (→ `red_fox`) and the elephant case (→ `unknown`).
+- `scripts/verify_matching.py` — all 4 checks pass: fox post ranks fox top
+  and suggests it; a forced real wolf candidate (0.785 similarity — a
+  genuinely close call, confirming the brief's fox/wolf premise) on the
+  fox post is rejected with `SUBJECT_MISMATCH`; the "Vulpes vulpes" post
+  still matches fox; the elephant post gets `NO_MATCH`.
+- Not scripted, but observed for free while eyeballing all 8 posts: the
+  dog post's real top hit was a wolf image (0.756) — the guard's
+  **rescue path fired for real**, promoting a dog candidate at 0.744
+  (`PROMOTED_OVER_TOP_HIT`), the exact mechanism Step 1 proved on mocks,
+  now proven on live embeddings too.
+- `pytest -v` — 30/30 (24 previous + 6 new extraction tests), zero
+  network/DB calls in the suite itself.
+
+**Next:** Step 5 — FastAPI endpoints (`GET /posts/{id}/images`,
+`POST /pairings/{id}/review`), the one-page Jinja2 review UI, a cost
+summary endpoint, and `eval/run_eval.py` for the formal top-1 precision
+number (the informal version — 48/48 tagging-accuracy and 4/4 matching
+checks — already exists above).

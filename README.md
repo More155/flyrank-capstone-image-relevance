@@ -6,7 +6,7 @@ matches each image to the right blog post: a red-fox post gets the red-fox
 photo, never the wolf. The production-critical part isn't finding a match —
 it's a **mismatch guard** that refuses a wrong pairing and explains why.
 
-**Status: in progress.** Steps 1–3 of 5 are done (see
+**Status: in progress.** Steps 1–4 of 5 are done (see
 [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) for the step-by-step record).
 This README will fill in as later steps land — see Limitations below for
 exactly what isn't built yet.
@@ -79,6 +79,9 @@ Seed the corpus and run vision tagging for real:
 ```bash
 .venv/bin/python -m scripts.seed_corpus   # idempotent, inserts the 48-image corpus
 .venv/bin/python -m jobs.classify         # tags every untagged image
+.venv/bin/python -m jobs.embed_images     # embeds every tagged image's caption
+.venv/bin/python -m scripts.seed_posts    # seeds 8 sample posts + subject extraction
+.venv/bin/python -m scripts.verify_matching  # live proof: ranking, guard rejection, paraphrase, no-match
 ```
 
 Note: `DATABASE_URL` must point at Supabase's **connection pooler**
@@ -92,21 +95,29 @@ exact format.
 
 ## Evaluation
 
-Top-1 precision on a small labeled eval set — *not measured yet, lands in
-Step 5.* Number will be reported here and must match `EVIDENCE.md`.
+Formal top-1 precision script lands in Step 5. The same underlying signal
+already exists informally: all 48 tagged images match their corpus label
+(100%), and `scripts/verify_matching.py`'s 4 live checks — fox post ranks
+fox, a forced real wolf candidate on the fox post is rejected, the
+"Vulpes vulpes" paraphrase still matches fox, the no-coverage (elephant)
+post gets `no_match` — all pass. See `EVIDENCE.md` for the pasted output.
 
 ## Limitations (honest, as of this writing)
 
-- No embeddings/matching yet — the guard is proven only on hand-built mock
-  candidates (`tests/test_guard.py`), not real ranked results.
-- No API/review surface yet.
-- `vector(1536)` in the migrations is a placeholder dimension; will be
-  corrected to match Gemini's embedding output size in Step 4.
+- No API/review surface yet — matching only runs via
+  `matching.match_images_for_post()` directly or `scripts/verify_matching.py`,
+  not over HTTP.
+- No formal eval script yet (top-1 precision as a single reported number);
+  the informal signal above exists but isn't the Step 5 deliverable.
 - The corpus (`corpus.py`) is 48 images, not exactly ~50 — 8 per species
   across the 6 species in `vocab.py`.
 - Default vision model is `gemini-3.1-flash-lite`, not the newest
   `gemini-3.6-flash` — the latter's free tier is 20 requests/day, too low
   for a 48-image batch. See BUILDLOG.md.
+- Embedding cost tracking (`embeddings.py`) estimates tokens from text
+  length (`len(text) // 4`) rather than a real usage field — Gemini's
+  `embed_content` doesn't return one in this SDK version. Approximate, not
+  exact.
 
 ## Docs
 
