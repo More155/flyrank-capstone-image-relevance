@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
     gemini_api_key: str
-    vision_model: str = "gemini-flash-latest"
+    vision_model: str = "gemini-3.1-flash-lite"
     embedding_model: str = "gemini-embedding-001"
 
     # Same conf_floor value used at ingestion (vision.derive_status) and at

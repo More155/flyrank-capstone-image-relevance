@@ -16,11 +16,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
+import ssl
 import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from uuid import UUID
 
+import certifi
 from google.genai import errors as genai_errors
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -33,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 4
 
+# The python.org macOS build doesn't use the system CA store by default,
+# so plain urlopen() fails HTTPS with CERTIFICATE_VERIFY_FAILED. Use
+# certifi's bundle explicitly rather than asking users to run
+# "Install Certificates.command" as a setup step.
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
 
 def _is_transient(exc: BaseException) -> bool:
     if isinstance(exc, genai_errors.ServerError):
@@ -42,10 +50,10 @@ def _is_transient(exc: BaseException) -> bool:
     return False
 
 
-def _load_image_bytes(source_uri: str) -> tuple[bytes, str]:
+def load_image_bytes(source_uri: str) -> tuple[bytes, str]:
     mime_type = mimetypes.guess_type(source_uri)[0] or "image/jpeg"
     if urlparse(source_uri).scheme in ("http", "https"):
-        with urllib.request.urlopen(source_uri) as resp:
+        with urllib.request.urlopen(source_uri, context=_SSL_CONTEXT) as resp:
             return resp.read(), mime_type
     with open(source_uri, "rb") as f:
         return f.read(), mime_type
@@ -138,14 +146,18 @@ def _insert_invalid_tag(conn, image_id: UUID, model: str, reason: str) -> None:
 @dataclass
 class ClassifyOutcome:
     image_id: UUID
-    status: TagStatus
+    # None means "no image_tags row written — still pending a future run,"
+    # not a persisted status. See the API-failure branch below for why.
+    status: TagStatus | None
 
 
 async def _classify_one(semaphore: asyncio.Semaphore, image_id: UUID, source_uri: str) -> ClassifyOutcome:
     async with semaphore:
         try:
-            image_bytes, mime_type = _load_image_bytes(source_uri)
+            image_bytes, mime_type = load_image_bytes(source_uri)
         except OSError as exc:
+            # A permanently broken source_uri really is the image's fault —
+            # record it so it isn't retried forever.
             logger.warning("could not load image %s: %s", image_id, exc)
             with get_connection() as conn:
                 _insert_invalid_tag(conn, image_id, settings.vision_model, f"could not load image: {exc}")
@@ -155,6 +167,14 @@ async def _classify_one(semaphore: asyncio.Semaphore, image_id: UUID, source_uri
         try:
             result, attempts_used = await _tag_with_retry(image_bytes, mime_type)
         except Exception as exc:
+            # We never got a model response at all here (quota exhaustion,
+            # network failure, a non-transient API error) — that's an
+            # operational failure, not "the model gave us bad output."
+            # Deliberately does NOT write image_tags: doing so would
+            # permanently brand the image invalid_output (per idempotency,
+            # never retried again) for what might be a same-day quota reset
+            # away from succeeding. Log the failed call for cost/audit
+            # visibility and leave the image pending for the next run.
             attempts_used = _MAX_ATTEMPTS if _is_transient(exc) else 1
             logger.warning("vision call failed for %s after %d attempt(s): %s", image_id, attempts_used, exc)
             with get_connection() as conn:
@@ -169,9 +189,8 @@ async def _classify_one(semaphore: asyncio.Semaphore, image_id: UUID, source_uri
                     ok=False,
                     attempt=attempts_used,
                 )
-                _insert_invalid_tag(conn, image_id, settings.vision_model, f"vision call failed: {exc}")
                 conn.commit()
-            return ClassifyOutcome(image_id, TagStatus.INVALID_OUTPUT)
+            return ClassifyOutcome(image_id, None)
 
         with get_connection() as conn:
             _log_model_call(
@@ -223,7 +242,8 @@ async def run_classification_job(concurrency: int = 5) -> dict[str, int]:
 
     summary: dict[str, int] = {}
     for outcome in outcomes:
-        summary[outcome.status.value] = summary.get(outcome.status.value, 0) + 1
+        key = outcome.status.value if outcome.status is not None else "pending_retry"
+        summary[key] = summary.get(key, 0) + 1
     logger.info("classification job done: %s", summary)
     return summary
 

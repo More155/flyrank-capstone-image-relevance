@@ -209,13 +209,88 @@ for the guard.
   network calls in the suite itself (all Gemini/DB interaction is mocked
   or injected).
 
-**Not yet done:** a real end-to-end run of `run_classification_job()`
-against the live Supabase project and an actual image corpus — blocked on
-(a) `DATABASE_URL` in `.env`, still outstanding since Step 2, and (b) the
-corpus itself (~50 licensed-free images), not gathered yet. `EVIDENCE.md`
-reflects this honestly — checkboxes are proven at the unit-test level, not
-claimed as a full corpus run.
+---
 
-**Next:** resolve the two blockers above, do a real corpus run, then
-Step 4 — `embeddings.py`, `matching.py`, wiring the existing guard to real
-candidates.
+## Step 3 continued — real corpus, live end-to-end run (2026-08-03)
+
+**What was built:**
+- [`corpus.py`](corpus.py) — the ~50-image corpus manifest, source of truth
+  for both DB seeding and (Step 5) eval ground truth. 48 real Unsplash
+  photos (8 per species × 6 species in `vocab.py`), gathered by browsing
+  Unsplash search results and extracting real CDN photo URLs — not
+  guessed, not committed as binary files (`CorpusImage.url` points straight
+  at Unsplash's CDN, so `scripts/seed_corpus.py` reproduces the same corpus
+  anywhere). Unsplash License: free for any use, no attribution required.
+- [`scripts/seed_corpus.py`](scripts/seed_corpus.py) — idempotent (dedupes
+  on `sha256`) insert into `images`, reusing `jobs.classify.load_image_bytes`
+  rather than duplicating fetch logic.
+
+**Two real infrastructure problems hit and fixed, both needed for any
+future live run to work at all, not just this one:**
+
+1. **DATABASE_URL**: Supabase's direct-connection host
+   (`db.<ref>.supabase.co`) only has an `AAAA` (IPv6) record — no `A`
+   record — and this network can't reach it (`dig` confirmed). Fixed by
+   switching to Supabase's transaction-mode pooler
+   (`aws-0-us-east-1.pooler.supabase.com:6543`, username
+   `postgres.<project-ref>`), which resolves over IPv4. That in turn
+   surfaced a second issue: PgBouncer in transaction mode doesn't give
+   pooled connections their own prepared-statement namespace, so
+   psycopg3's automatic server-side `PREPARE` collided
+   (`DuplicatePreparedStatement`) across connections. Fixed in
+   [`db.py`](db.py) with `psycopg.connect(..., prepare_threshold=None)`.
+2. **SSL on macOS**: the python.org build doesn't use the system CA store,
+   so `urllib.request.urlopen()` failed every HTTPS fetch with
+   `CERTIFICATE_VERIFY_FAILED`. Fixed by building an SSL context from
+   `certifi.where()` and passing it explicitly
+   (`jobs/classify.py`'s `load_image_bytes`, now the one place both the
+   classify job and `seed_corpus.py` fetch bytes from).
+
+**Also hit, and it changed the default model:** `gemini-flash-latest`
+(→ `gemini-3.6-flash`) has a **20-requests/day** free-tier quota — far too
+low for a 48-image batch even at concurrency 5. Quota is per-model, not
+per-account, so switching `vision_model` to `gemini-3.1-flash-lite`
+(cheaper too: $0.25/$1.50 per 1M tokens vs. $1.50/$7.50) picked up separate,
+sufficient quota and finished the run. `config.py` and `vision.py`'s
+pricing table updated accordingly. Full narrative in BUILDLOG.md, including
+why this changed `_classify_one`'s failure handling (see next paragraph).
+
+**A design correction that came directly from hitting the quota wall:**
+the original Step 3 code wrote an `image_tags` row with
+`status=invalid_output` for *any* failure to get a model response,
+including exhausted-retry transient failures — which, combined with
+idempotency ("skip images already in `image_tags`"), permanently branded
+29 images invalid the moment quota ran out, even though nothing was wrong
+with them. Changed `_classify_one` so `invalid_output` is written only for
+a genuine model response that failed schema validation — that is what the
+status name actually means. A total API failure (quota, network, a
+non-transient error) now logs the failed `model_calls` row for cost/audit
+visibility but writes no `image_tags` row at all, leaving the image
+legitimately pending for the next run. Manually deleted the 29 bad rows
+from the earlier run before re-running with the corrected code and model.
+
+**One more real catch, not a bug:** one of the 8 "gray wolf" corpus photos
+turned out to be a coyote (Unsplash's alt-text was wrong). The model
+correctly returned `subject=unknown` at 0.95 confidence instead of forcing
+it to `gray_wolf` — a live demonstration of the exact behavior Step 3 is
+supposed to produce. Since `corpus.py` doubles as eval ground truth for
+Step 5, a mislabeled entry would have quietly deflated a future precision
+number for the wrong reason, so it was swapped for a verified wolf photo
+rather than left in.
+
+**Verified (final state, live Supabase project):**
+```
+$ .venv/bin/python -m jobs.classify
+classification job done: {'ok': 48}
+```
+- `image_tags`: 48/48 `status='ok'`.
+- Tagged subject matches `corpus.py`'s ground-truth label for 48/48 images
+  (100%) — not the formal Step 5 eval script, but the same check.
+- `model_calls`: 78 rows (29 failed attempts from the quota-exhausted
+  `gemini-3.6-flash` run, at $0/0 tokens, + 49 successful), notional cost
+  $0.129250 at paid-tier rates — actual billing $0 (free tier).
+- `pytest -v` — still 24/24, no regressions from any of the above fixes.
+
+**Next:** Step 4 — `embeddings.py`, `matching.py`, wiring the existing
+guard to real candidates. `vector(1536)` placeholder needs correcting to
+whatever `gemini-embedding-001` actually outputs before that lands.

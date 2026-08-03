@@ -73,6 +73,63 @@ inventing a hypothetical test case.
 
 ---
 
+## 2026-08-03 — First real corpus run: three infrastructure bugs and one
+design bug, all found by actually running it
+
+**Context:** built the corpus (`corpus.py`, 48 real Unsplash photos) and
+ran `jobs/classify.py` against the live Supabase project for real, instead
+of stopping at "unit tests pass." That decision is what surfaced all four
+of the following — none of them would have shown up otherwise.
+
+**Where AI was wrong, #1 — DATABASE_URL didn't work as given.** The user
+pasted a direct-connection string
+(`db.<ref>.supabase.co:5432`); it failed DNS resolution. Root cause:
+that host is IPv6-only (confirmed with `dig`), and this network has no
+IPv6 route. Told the user precisely what was wrong and where to find the
+alternative (Supabase's connection pooler) rather than guessing at fixes.
+
+**Where AI was wrong, #2 — the pooler fix broke a different way.**
+Switching to the pooler connection surfaced
+`psycopg.errors.DuplicatePreparedStatement`. This is a known
+PgBouncer-transaction-mode incompatibility with psycopg3's automatic
+server-side prepared statements — not something guessed at, but recognized
+from the specific error shape and fixed with `prepare_threshold=None`.
+
+**Where AI was wrong, #3 — macOS SSL.** `urllib.request.urlopen()` failed
+every HTTPS image fetch with `CERTIFICATE_VERIFY_FAILED` — the python.org
+macOS build doesn't use the system CA store. Fixed with an explicit
+`certifi`-backed SSL context instead of telling the user to run a
+one-off terminal command.
+
+**Where AI was wrong, #4 — a real design bug, not infrastructure.**
+`gemini-flash-latest` turned out to have a 20-request/day free-tier quota,
+which a 48-image batch blew through immediately. That by itself was just a
+model-choice problem (fixed by switching to `gemini-3.1-flash-lite`), but
+it exposed something worse: the original code treated *any* failure to get
+a model response — including "we simply ran out of quota for the day" — as
+`invalid_output`, and idempotency ("skip images already tagged") meant
+those 29 images would never be retried again, ever, even after the quota
+reset. Quota exhaustion isn't the image's fault and isn't a validation
+failure; conflating the two was a real bug, not just bad luck. Fixed by
+only writing `invalid_output` for an actual failed schema validation, and
+leaving API-failure cases untagged (and thus eligible for the next run).
+Had to manually delete 29 wrongly-invalidated rows before re-running.
+
+**Not a bug, but worth recording:** one "gray wolf" corpus photo was
+actually a coyote (bad Unsplash alt-text). The model correctly said
+`unknown` at 0.95 confidence rather than guessing — the system did exactly
+what it's supposed to. Fixed the corpus entry anyway, since it doubles as
+eval ground truth and a wrong label there would silently understate a
+future precision number.
+
+**Result:** 48/48 images tagged, 48/48 (100%) matching the corpus's
+ground-truth label, `pytest` still 24/24. None of the four fixes above
+were predictable from documentation or training data — all four came from
+actually executing the code against real infrastructure and reading the
+actual error.
+
+---
+
 ## Ongoing
 
 Each subsequent phase gets an entry here noting anything AI got wrong or had

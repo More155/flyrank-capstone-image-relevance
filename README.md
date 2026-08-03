@@ -72,11 +72,23 @@ project.
 
 Vision/embeddings: requires a free Gemini API key from
 [Google AI Studio](https://aistudio.google.com/apikey) (no credit card) —
-`GEMINI_API_KEY` in `.env`. Vision tagging (`vision.py`, `jobs/classify.py`)
-is implemented and unit-tested; embeddings land in Step 4.
+`GEMINI_API_KEY` in `.env`.
 
-`run:` / `seed:` commands for the full API are not available yet — see
-[`capstone.yaml`](capstone.yaml), which is filled in as each phase ships.
+Seed the corpus and run vision tagging for real:
+
+```bash
+.venv/bin/python -m scripts.seed_corpus   # idempotent, inserts the 48-image corpus
+.venv/bin/python -m jobs.classify         # tags every untagged image
+```
+
+Note: `DATABASE_URL` must point at Supabase's **connection pooler**
+(`aws-0-<region>.pooler.supabase.com:6543`, username
+`postgres.<project-ref>`), not the direct-connection host — the direct host
+is IPv6-only and unreachable from most networks. `.env.example` has the
+exact format.
+
+`run:` for the full API is not available yet — see
+[`capstone.yaml`](capstone.yaml), filled in as each phase ships.
 
 ## Evaluation
 
@@ -85,17 +97,16 @@ Step 5.* Number will be reported here and must match `EVIDENCE.md`.
 
 ## Limitations (honest, as of this writing)
 
-- Vision tagging (`vision.py`, `jobs/classify.py`) is built and unit-tested
-  against a live Gemini smoke test, but has **not yet been run end-to-end**
-  against the real database or a real image corpus — no images have
-  actually been tagged and persisted yet.
-- No image corpus committed yet (~50 licensed-free images still to be
-  gathered).
 - No embeddings/matching yet — the guard is proven only on hand-built mock
   candidates (`tests/test_guard.py`), not real ranked results.
 - No API/review surface yet.
 - `vector(1536)` in the migrations is a placeholder dimension; will be
   corrected to match Gemini's embedding output size in Step 4.
+- The corpus (`corpus.py`) is 48 images, not exactly ~50 — 8 per species
+  across the 6 species in `vocab.py`.
+- Default vision model is `gemini-3.1-flash-lite`, not the newest
+  `gemini-3.6-flash` — the latter's free tier is 20 requests/day, too low
+  for a 48-image batch. See BUILDLOG.md.
 
 ## Docs
 
