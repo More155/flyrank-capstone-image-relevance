@@ -485,3 +485,27 @@ standard shouldn't stop at this repo's boundary.
 architecture diagram as an actual image (currently ASCII, which the
 brief explicitly allows), and the stretch goals (none attempted, all
 explicitly out of scope per BRIEF.md §2 unless asked for).
+
+---
+
+## Post-Step-5 polish (2026-08-03)
+
+**Decisions:** asked the user which stretch goal (if any) to build —
+answer: skip stretch goals entirely, core is already done and proven.
+Kept scope to the two remaining concrete items.
+
+**What was built:**
+- README.md's Architecture section: replaced the ASCII diagram with a
+  real Mermaid flowchart (both flows, DB tables as cylinder nodes, the
+  guard as a decision node with labeled `suggest`/`no_match` branches).
+  GitHub renders Mermaid natively in README.md — no separate image file
+  to generate or keep in sync, renders as a crisp vector diagram,
+  theme-aware. Chosen over a hand-authored static SVG specifically
+  because SVG coordinates can't be visually verified without a render
+  step, while Mermaid's syntax is checkable by inspection and GitHub
+  does the rendering.
+- Repo rename to the brief's suggested `flyrank-capstone-*` convention:
+  **not done by this assistant** — `gh` isn't authenticated on this
+  machine (checked again; still true), and renaming a GitHub repo isn't
+  achievable through plain `git` without API access. Instructions handed
+  to the user instead.
