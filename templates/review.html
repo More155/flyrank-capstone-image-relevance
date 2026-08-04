@@ -14,7 +14,8 @@
   table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 0.85rem; }
   th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
   th { background: #f5f5f5; }
-  img.thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; }
+  img.thumb { width: 88px; height: 88px; object-fit: cover; border-radius: 4px; display: block; }
+  .no-image-box { width: 88px; height: 88px; display: flex; align-items: center; justify-content: center; text-align: center; border: 1px dashed #ccc; border-radius: 4px; font-size: 0.7rem; color: #6c757d; padding: 0.25rem; box-sizing: border-box; }
   .verdict-suggest { color: #157347; font-weight: 600; }
   .verdict-flag { color: #b8860b; font-weight: 600; }
   .verdict-no_match { color: #b02a37; font-weight: 600; }
@@ -24,12 +25,21 @@
   .status-suggested { color: #0d6efd; }
   .explanation { max-width: 260px; }
   .muted { color: #6c757d; font-size: 0.8rem; }
+  .intro { background: #f8f9fa; border: 1px solid #eee; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; font-size: 0.9rem; }
+  .intro p { margin: 0.4rem 0; }
+  .intro code { background: #eee; padding: 0.1rem 0.3rem; border-radius: 3px; }
 </style>
 </head>
 <body>
 
 <h1>Image Relevance &amp; Auto-Tagging — Review</h1>
 <p class="muted">Approve or reject a suggested pairing, and see exactly why the guard suggested or refused it.</p>
+
+<div class="intro">
+  <p><strong>Get a suggestion</strong> asks the real system "what image best fits this post?" A good match comes back with a thumbnail, a similarity score, and Approve/Reject buttons. If nothing qualifies, it comes back as <code>no_match</code> with <strong>no image on purpose</strong> — the guard refuses to show a wrong picture rather than guess, so that row is supposed to look empty.</p>
+  <p><strong>Force a specific image</strong> is the demo trick: pick "Getting to Know the Red Fox" as the post and any <code>gray_wolf</code> image, then watch it get refused even though you forced it — the guard can't be tricked into endorsing a bad pairing.</p>
+  <p class="muted">Every click adds a new row below rather than replacing the old ones, so the table grows as you experiment.</p>
+</div>
 
 <div class="forms">
   <div>
@@ -83,7 +93,7 @@
         {% if p.source_uri %}
         <img class="thumb" src="{{ p.source_uri }}" alt="">
         {% else %}
-        <span class="muted">no image</span>
+        <div class="no-image-box">refused —<br>no image</div>
         {% endif %}
       </td>
       <td>{{ p.title }}</td>
