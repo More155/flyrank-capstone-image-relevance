@@ -6,10 +6,10 @@ matches each image to the right blog post: a red-fox post gets the red-fox
 photo, never the wolf. The production-critical part isn't finding a match —
 it's a **mismatch guard** that refuses a wrong pairing and explains why.
 
-**Status: in progress.** Steps 1–4 of 5 are done (see
+**Status: core complete.** All 5 build steps are done (see
 [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) for the step-by-step record).
-This README will fill in as later steps land — see Limitations below for
-exactly what isn't built yet.
+Top-1 precision: **100% (7/7)**. See Limitations below for what's still
+rough around the edges.
 
 ## What it does
 
@@ -43,6 +43,7 @@ GET /posts/:id/images
               ├─► suggested image (ranked, explained)
               └─► "no confident match" + reason
                     └─► review API: approve / reject
+                          └─► one-page Jinja2 review UI (/review)
 ```
 
 Two runtime flows, kept separate on purpose: ingestion (Flow A) is offline,
@@ -82,6 +83,7 @@ Seed the corpus and run vision tagging for real:
 .venv/bin/python -m jobs.embed_images     # embeds every tagged image's caption
 .venv/bin/python -m scripts.seed_posts    # seeds 8 sample posts + subject extraction
 .venv/bin/python -m scripts.verify_matching  # live proof: ranking, guard rejection, paraphrase, no-match
+.venv/bin/python -m eval.run_eval         # top-1 precision
 ```
 
 Note: `DATABASE_URL` must point at Supabase's **connection pooler**
@@ -90,25 +92,30 @@ Note: `DATABASE_URL` must point at Supabase's **connection pooler**
 is IPv6-only and unreachable from most networks. `.env.example` has the
 exact format.
 
-`run:` for the full API is not available yet — see
-[`capstone.yaml`](capstone.yaml), filled in as each phase ships.
+Run the API and review UI:
+
+```bash
+.venv/bin/uvicorn api:app --reload --port 8000
+```
+
+Then open `http://localhost:8000/review` — pick a post, click **Suggest**
+to see a real ranked recommendation, or use **Force a specific image** to
+reproduce the "force the wolf, it still refuses" demo with any image in
+the corpus. Full JSON API also available (`GET /posts`, `GET
+/posts/{id}/images`, `POST /pairings/{id}/review`, `GET /pairings`, `GET
+/costs/summary`) and self-documented at `/docs`.
 
 ## Evaluation
 
-Formal top-1 precision script lands in Step 5. The same underlying signal
-already exists informally: all 48 tagged images match their corpus label
-(100%), and `scripts/verify_matching.py`'s 4 live checks — fox post ranks
-fox, a forced real wolf candidate on the fox post is rejected, the
-"Vulpes vulpes" paraphrase still matches fox, the no-coverage (elephant)
-post gets `no_match` — all pass. See `EVIDENCE.md` for the pasted output.
+**Top-1 precision: 100% (7/7)**, measured by `eval/run_eval.py` against
+hand-labeled ground truth in `posts_seed.py` (not the model's own subject
+extraction — that would be circular). The 8th seed post (no corpus
+coverage) is excluded from the precision denominator and checked
+separately: does the system correctly refuse rather than guess? It does.
+Full output in `EVIDENCE.md`.
 
 ## Limitations (honest, as of this writing)
 
-- No API/review surface yet — matching only runs via
-  `matching.match_images_for_post()` directly or `scripts/verify_matching.py`,
-  not over HTTP.
-- No formal eval script yet (top-1 precision as a single reported number);
-  the informal signal above exists but isn't the Step 5 deliverable.
 - The corpus (`corpus.py`) is 48 images, not exactly ~50 — 8 per species
   across the 6 species in `vocab.py`.
 - Default vision model is `gemini-3.1-flash-lite`, not the newest
@@ -118,6 +125,14 @@ post gets `no_match` — all pass. See `EVIDENCE.md` for the pasted output.
   length (`len(text) // 4`) rather than a real usage field — Gemini's
   `embed_content` doesn't return one in this SDK version. Approximate, not
   exact.
+- No auth on the API — fine for a local capstone demo, not for anything
+  public-facing.
+- Eval set is small (7 scoreable posts) by design (source brief's
+  "realistic scope" — don't build a massive corpus). 100% on 7 examples is
+  a real, honestly-measured signal, not a statistically strong claim.
+- No stretch goals attempted (alt-text, near-duplicate detection, fallback
+  generation, human-in-the-loop QA, Capstone-1 integration) — out of scope
+  per BRIEF.md §2.
 
 ## Docs
 

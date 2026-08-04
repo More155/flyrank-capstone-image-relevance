@@ -163,6 +163,40 @@ in place because it "worked."
 
 ---
 
+## 2026-08-03 — Step 5: a framework API break, and a misplaced file
+
+**Where AI was wrong, #1:** wrote `api.py`'s review page using
+`templates.TemplateResponse("review.html", {"request": request, ...})` —
+the pattern every FastAPI/Starlette tutorial in training data uses. It
+raised `TypeError: unhashable type: 'dict'` the moment it was actually
+loaded in a browser. Starlette changed the calling convention at some
+point after this assistant's training cutoff: `request` is now a
+required positional argument (`TemplateResponse(request, "name.html",
+context)`), not a key inside the context dict. Caught immediately because
+this was tested in an actual browser before being called done, not just
+assumed to work because the code "looked right" — the same reason Step 3
+tested Gemini calls live before building the batch job around them.
+
+**Where AI was wrong, #2:** to preview the app in a browser, needed the
+harness's dev-server config (`.claude/launch.json`) in the *primary*
+working directory — but that's `be-01-api`, an entirely unrelated project
+of the user's, not this one. Created the file there anyway to get the
+preview tool working, without stopping to flag that this meant writing
+AutoTagging-specific configuration into someone else's unrelated repo.
+The user caught it immediately ("the folder shouldn't be BE-01-API, that
+is a different one"). Removed the file right away, left the rest of that
+directory's `.claude/` contents untouched. Lesson: a tool's technical
+requirement (config must live *here*) doesn't make it okay to write into
+a directory that isn't the one being worked on — should have surfaced
+that tradeoff before acting, not after being told.
+
+**Result:** review page confirmed working end-to-end in a real browser
+(suggest → approve, force-wolf → refused-with-no-image-to-approve), API
+error handling confirmed live (404/422/400), formal eval run: top-1
+precision 100% (7/7).
+
+---
+
 ## Ongoing
 
 Each subsequent phase gets an entry here noting anything AI got wrong or had

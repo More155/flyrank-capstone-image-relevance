@@ -2,17 +2,26 @@
 paraphrase case (scientific name, no "fox" in the text at all), and a
 deliberate no-good-match case (a species with zero corpus coverage), per
 the source brief's demo script (§13).
+
+`expected_subject` is hand-labeled ground truth (I know what each post is
+about — I wrote it), used by eval/run_eval.py. Deliberately not the same
+thing as `posts.subject`, which comes from Gemini's own extraction
+(scripts/seed_posts.py) — grading the model against its own answer would
+be circular.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from vocab import Subject
+
 
 @dataclass(frozen=True)
 class SeedPost:
     title: str
     body: str
+    expected_subject: Subject
 
 
 POSTS: list[SeedPost] = [
@@ -22,6 +31,7 @@ POSTS: list[SeedPost] = [
         "forests, grasslands, and even city suburbs. Recognizable by its "
         "rust-orange coat and bushy white-tipped tail, it hunts mostly at "
         "dawn and dusk for rodents, birds, and insects.",
+        Subject.RED_FOX,
     ),
     SeedPost(
         "The Secretive World of Vulpes Vulpes",
@@ -29,6 +39,7 @@ POSTS: list[SeedPost] = [
         "most widespread carnivores on the planet. This piece explores its "
         "hunting habits, its famously bushy tail, and its surprising "
         "adaptability to urban environments.",
+        Subject.RED_FOX,
     ),
     SeedPost(
         "Life Among Gray Wolves",
@@ -36,6 +47,7 @@ POSTS: list[SeedPost] = [
         "tightly bonded packs led by a breeding pair. Their howls, used to "
         "coordinate hunts and mark territory, can carry for miles across "
         "open wilderness.",
+        Subject.GRAY_WOLF,
     ),
     SeedPost(
         "Why Dogs Make Great Companions",
@@ -43,6 +55,7 @@ POSTS: list[SeedPost] = [
         "years, bred over generations for loyalty, trainability, and "
         "companionship. From working breeds to lapdogs, they remain "
         "humanity's most enduring animal partnership.",
+        Subject.DOMESTIC_DOG,
     ),
     SeedPost(
         "The Charming Red Panda",
@@ -50,6 +63,7 @@ POSTS: list[SeedPost] = [
         "eastern Himalayas and southwestern China. With its rust-colored "
         "fur, ringed tail, and masked face, it's often mistaken for a "
         "relative of the giant panda, though it isn't closely related.",
+        Subject.RED_PANDA,
     ),
     SeedPost(
         "Nighttime Visitors: Understanding Raccoons",
@@ -57,6 +71,7 @@ POSTS: list[SeedPost] = [
         "distinctive black facial mask and ringed tail. Their dexterous "
         "front paws let them manipulate objects with surprising precision, "
         "making them notorious for raiding trash cans and pet food bowls.",
+        Subject.RACCOON,
     ),
     SeedPost(
         "Domestic Cats: Independent by Nature",
@@ -64,6 +79,7 @@ POSTS: list[SeedPost] = [
         "years, valued first for pest control and later for companionship. "
         "Despite domestication, cats retain much of their wild ancestors' "
         "hunting instinct and independent streak.",
+        Subject.DOMESTIC_CAT,
     ),
     SeedPost(
         "The Majestic African Elephant",
@@ -71,5 +87,6 @@ POSTS: list[SeedPost] = [
         "their intelligence, complex social bonds, and remarkable memory. "
         "Their trunks serve as an all-purpose tool for breathing, drinking, "
         "grasping, and communication.",
+        Subject.UNKNOWN,
     ),
 ]
