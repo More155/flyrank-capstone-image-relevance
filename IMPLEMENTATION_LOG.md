@@ -502,8 +502,17 @@ Kept scope to the two remaining concrete items.
   to generate or keep in sync, renders as a crisp vector diagram,
   theme-aware. Chosen over a hand-authored static SVG specifically
   because SVG coordinates can't be visually verified without a render
-  step, while Mermaid's syntax is checkable by inspection and GitHub
-  does the rendering.
+  step. Verified two ways: pushed and inspected GitHub's own render
+  pipeline (the mermaid block loads into a sandboxed
+  `viewscreen.githubusercontent.com` iframe with the diagram source
+  correctly passed through — confirmed via `javascript_tool`, since
+  cross-origin restrictions blocked reading the iframe's rendered SVG
+  directly), and rendered the exact same source locally with
+  `@mermaid-js/mermaid-cli` (`npx -y @mermaid-js/mermaid-cli`) to a real
+  SVG file, then read it to confirm every node, both subgraphs, the `×`
+  character, the single-quoted text, and both edge labels came through
+  correctly. The local render is the stronger proof — same engine,
+  fully inspectable, no cross-origin sandbox in the way.
 - Repo rename to the brief's suggested `flyrank-capstone-*` convention:
   **not done by this assistant** — `gh` isn't authenticated on this
   machine (checked again; still true), and renaming a GitHub repo isn't
