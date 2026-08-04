@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Image Relevance — Review</title>
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #ffffff; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 2.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
+  .forms { display: flex; gap: 2rem; flex-wrap: wrap; }
+  form.inline { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+  select, button, input[type=text] { padding: 0.35rem 0.5rem; font-size: 0.9rem; }
+  button { cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 0.85rem; }
+  th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; }
+  img.thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; }
+  .verdict-suggest { color: #157347; font-weight: 600; }
+  .verdict-flag { color: #b8860b; font-weight: 600; }
+  .verdict-no_match { color: #b02a37; font-weight: 600; }
+  .status-approved { color: #157347; }
+  .status-rejected { color: #b02a37; }
+  .status-refused_by_guard { color: #6c757d; font-style: italic; }
+  .status-suggested { color: #0d6efd; }
+  .explanation { max-width: 260px; }
+  .muted { color: #6c757d; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Image Relevance &amp; Auto-Tagging — Review</h1>
+<p class="muted">Approve or reject a suggested pairing, and see exactly why the guard suggested or refused it.</p>
+
+<div class="forms">
+  <div>
+    <h2>Get a suggestion</h2>
+    <form class="inline" method="post" action="/review/suggest">
+      <select name="post_id" required>
+        {% for post in posts %}
+        <option value="{{ post.id }}">{{ post.title }} ({{ post.subject }})</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Suggest</button>
+    </form>
+  </div>
+
+  <div>
+    <h2>Force a specific image (demo: force the wolf)</h2>
+    <form class="inline" method="post" action="/review/force">
+      <select name="post_id" required>
+        {% for post in posts %}
+        <option value="{{ post.id }}">{{ post.title }} ({{ post.subject }})</option>
+        {% endfor %}
+      </select>
+      <select name="image_id" required>
+        {% for image in images %}
+        <option value="{{ image.id }}">{{ image.subject }} — {{ image.id }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Force</button>
+    </form>
+  </div>
+</div>
+
+<h2>Pairings</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Image</th>
+      <th>Post</th>
+      <th>Verdict</th>
+      <th>Reason</th>
+      <th>Explanation</th>
+      <th>Similarity</th>
+      <th>Status</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pairings %}
+    <tr>
+      <td>
+        {% if p.source_uri %}
+        <img class="thumb" src="{{ p.source_uri }}" alt="">
+        {% else %}
+        <span class="muted">no image</span>
+        {% endif %}
+      </td>
+      <td>{{ p.title }}</td>
+      <td class="verdict-{{ p.verdict }}">{{ p.verdict }}</td>
+      <td>{{ p.reason }}</td>
+      <td class="explanation">{{ p.explanation }}</td>
+      <td>{{ "%.3f"|format(p.similarity) if p.similarity is not none else "—" }}</td>
+      <td class="status-{{ p.status }}">
+        {{ p.status }}
+        {% if p.note %}<br><span class="muted">{{ p.note }}</span>{% endif %}
+      </td>
+      <td>
+        {% if p.status == "suggested" %}
+        <form class="inline" method="post" action="/review/act">
+          <input type="hidden" name="pairing_id" value="{{ p.id }}">
+          <input type="hidden" name="action" value="approved">
+          <button type="submit">Approve</button>
+        </form>
+        <form class="inline" method="post" action="/review/act">
+          <input type="hidden" name="pairing_id" value="{{ p.id }}">
+          <input type="hidden" name="action" value="rejected">
+          <button type="submit">Reject</button>
+        </form>
+        {% else %}
+        <span class="muted">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="muted">No pairings yet — get a suggestion above.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+</body>
+</html>

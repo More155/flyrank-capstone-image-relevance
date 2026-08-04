@@ -391,3 +391,97 @@ inputs — confirmed true here; `guard.py` has zero changes since Step 1.
 summary endpoint, and `eval/run_eval.py` for the formal top-1 precision
 number (the informal version — 48/48 tagging-accuracy and 4/4 matching
 checks — already exists above).
+
+---
+
+## Step 5 — API, review UI, cost summary, eval (2026-08-03)
+
+**Scope:** FastAPI app, one Jinja2 review page, cost summary endpoint,
+`eval/run_eval.py`. This is the last of the 5 build steps — the core
+capstone is now complete end to end.
+
+**What was built:**
+- [`pairings.py`](pairings.py) — `create_pairing()` (runs the guard,
+  natural-ranked or forced, persists the result), `review_pairing()`
+  (validates the action is `approved`/`rejected` — `suggested` and
+  `refused_by_guard` are system-only outcomes, never a human review
+  action), `list_pairings_for_review()`.
+- [`matching.py`](matching.py) — added `match_forced_image()` and the
+  `_get_post_subject`/`_get_post_embedding`/`_candidate_for_image` helpers
+  it and `match_images_for_post()` now share (refactor, no behavior
+  change to the existing functions). The forced path builds a `Candidate`
+  from that image's *real* similarity to the post — not a fabricated one
+  — so "force the wolf, it still refuses" is an honest demo.
+- [`api.py`](api.py) — FastAPI app: `GET /posts`, `GET /images`, `GET
+  /posts/{id}/images` (accepts `force_image_id`), `POST
+  /pairings/{id}/review`, `GET /pairings`, `GET /costs/summary`, plus
+  `GET /review` (the page) and three form-only routes
+  (`/review/suggest`, `/review/force`, `/review/act`) using
+  POST/redirect/GET — no JavaScript anywhere.
+- [`templates/review.html`](templates/review.html) — the one page: get a
+  suggestion, force a specific image (the demo path), a pairings table
+  with hotlinked Unsplash thumbnails, approve/reject where applicable.
+- [`posts_seed.py`](posts_seed.py) — added `expected_subject: Subject` to
+  `SeedPost`, hand-labeled ground truth for the eval (distinct from
+  `posts.subject`, which is the model's own extraction — grading the
+  model against its own answer would be circular).
+- [`eval/run_eval.py`](eval/run_eval.py) — top-1 precision per the source
+  brief's glossary definition, over the 7 posts with real corpus
+  coverage; the 8th (elephant, no coverage) is excluded from the
+  denominator and checked separately as a refuse-don't-guess case.
+- [`tests/test_pairings.py`](tests/test_pairings.py),
+  [`tests/test_api.py`](tests/test_api.py) — pure/offline tests (status
+  mapping, malformed-UUID → 422). DB-dependent API behavior (404s, the
+  full review workflow) verified live instead, consistent with how this
+  project has handled DB-touching code since Step 2 — see EVIDENCE.md.
+
+**One real bug, caught immediately by testing in a browser (not just
+`pytest`):** `templates.TemplateResponse("review.html", {"request":
+request, ...})` — the pattern from most tutorials and this assistant's
+training data — raised `TypeError: unhashable type: 'dict'` on first
+load. Starlette changed the calling convention: `request` is now a
+positional argument, not a context-dict key
+(`TemplateResponse(request, "name.html", context)`). Fixed in `api.py`'s
+`review_page`. Full account in BUILDLOG.md.
+
+**Decisions:**
+- Dual surface on purpose: a JSON API for programmatic use, plus
+  form-only HTML routes for the review page, rather than making the page
+  call the JSON API via JavaScript. Keeps the page usable with zero JS,
+  per the brief's "keep the UI to a single page" instruction, and keeps
+  the JSON API's request/response shapes clean (`ReviewAction`'s `action`
+  is a `PairingStatus`, not a string that happens to work in a form post).
+- `GET /posts/{id}/images` both computes *and persists* a pairing on every
+  call — matches Flow B's pseudocode (ranking always produces a decision
+  worth recording) and means the review page's data is never stale
+  relative to what the guard would say right now.
+- Cost tracking is real, not a placeholder: `GET /costs/summary`
+  aggregates `model_calls` by `kind`/`model` with live counts and dollar
+  totals — checked live, not just unit-tested.
+
+**Verified (live, browser + curl + the real DB):**
+- Full review workflow in a real browser: selected the fox post, clicked
+  Suggest → thumbnail + verdict=`suggest` + similarity `0.842` appeared →
+  clicked Approve → status flipped to `approved`, action buttons
+  disappeared. Forced a real `gray_wolf` image onto the fox post via the
+  Force form → verdict=`no_match`, status=`refused_by_guard`, no image
+  shown, no approve/reject buttons (nothing to review for a refusal).
+- `curl` error-handling checks: 404 (missing post), 422 (malformed UUID),
+  400 (invalid review action), 200 (`/docs` auto-generated).
+- `eval/run_eval.py`: **top-1 precision 100% (7/7)**, plus the
+  no-coverage post correctly refused.
+- `pytest -v` — 37/37 (30 previous + 4 pairings + 3 API), zero network/DB
+  calls in the suite itself.
+
+**Not part of this build, flagged not hidden:** while setting up browser
+testing, a `.claude/launch.json` was mistakenly created in an unrelated
+project directory (`be-01-api`) rather than this one, because the preview
+tool requires its config in the *primary* working directory rather than
+this project's own. Caught by the user, removed immediately. Doesn't
+affect this repo at all — noted here only because BUILDLOG.md's honesty
+standard shouldn't stop at this repo's boundary.
+
+**This completes all 5 build steps.** Remaining polish, not blocking:
+architecture diagram as an actual image (currently ASCII, which the
+brief explicitly allows), and the stretch goals (none attempted, all
+explicitly out of scope per BRIEF.md §2 unless asked for).

@@ -44,11 +44,18 @@ async def ensure_post_embedded(post_id: UUID) -> None:
         conn.commit()
 
 
-def rank_images_for_post(post_id: UUID, top_k: int = 10) -> list[Candidate]:
-    """pgvector top-k over image_vectors, joined with image_tags for the
-    subject/confidence/caption the guard needs. Already sorted by
-    similarity descending — the guard relies on that ordering.
-    """
+def _get_post_subject(post_id: UUID) -> Subject:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select subject from posts where id = %s", (str(post_id),))
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"no post with id {post_id}")
+            (post_subject,) = row
+    return Subject(post_subject)
+
+
+def _get_post_embedding(post_id: UUID):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("select embedding from post_vectors where post_id = %s", (str(post_id),))
@@ -56,7 +63,18 @@ def rank_images_for_post(post_id: UUID, top_k: int = 10) -> list[Candidate]:
             if row is None:
                 raise ValueError(f"post {post_id} has no embedding — call ensure_post_embedded first")
             (post_embedding,) = row
+    return post_embedding
 
+
+def rank_images_for_post(post_id: UUID, top_k: int = 10) -> list[Candidate]:
+    """pgvector top-k over image_vectors, joined with image_tags for the
+    subject/confidence/caption the guard needs. Already sorted by
+    similarity descending — the guard relies on that ordering.
+    """
+    post_embedding = _get_post_embedding(post_id)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 select i.id, t.subject, t.confidence, t.caption,
@@ -84,6 +102,39 @@ def rank_images_for_post(post_id: UUID, top_k: int = 10) -> list[Candidate]:
     ]
 
 
+def _candidate_for_image(post_id: UUID, image_id: UUID) -> Candidate:
+    """Builds a single Candidate for a specific image against a specific
+    post's real embedding — the forced-candidate path. Real similarity,
+    not fabricated, so "force the wolf, it still refuses" is an honest
+    demo, not a rigged one.
+    """
+    post_embedding = _get_post_embedding(post_id)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select t.subject, t.confidence, t.caption,
+                       1 - (v.embedding <=> %s) as similarity
+                from image_vectors v
+                join image_tags t on t.image_id = v.image_id
+                where v.image_id = %s
+                """,
+                (post_embedding, str(image_id)),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"image {image_id} has no tags/embedding to compare")
+    subject, confidence, caption, similarity = row
+    return Candidate(
+        image_id=image_id,
+        subject=Subject(subject),
+        similarity=similarity,
+        tag_confidence=confidence if confidence is not None else 0.0,
+        caption=caption or "",
+    )
+
+
 async def match_images_for_post(
     post_id: UUID,
     top_k: int = 10,
@@ -92,19 +143,33 @@ async def match_images_for_post(
 ) -> GuardDecision:
     """The full Flow B pipeline: embed (if needed) -> rank -> guard."""
     await ensure_post_embedded(post_id)
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select subject from posts where id = %s", (str(post_id),))
-            row = cur.fetchone()
-            if row is None:
-                raise ValueError(f"no post with id {post_id}")
-            (post_subject,) = row
-
+    post_subject = _get_post_subject(post_id)
     candidates = rank_images_for_post(post_id, top_k=top_k)
     return guard(
-        Subject(post_subject),
+        post_subject,
         candidates,
+        sim_floor if sim_floor is not None else settings.sim_floor,
+        conf_floor if conf_floor is not None else settings.conf_floor,
+    )
+
+
+async def match_forced_image(
+    post_id: UUID,
+    image_id: UUID,
+    sim_floor: float | None = None,
+    conf_floor: float | None = None,
+) -> GuardDecision:
+    """Forces one specific image through the guard instead of natural
+    ranking — the "force the wolf, it still refuses" path. Same guard,
+    same logic, just a single-candidate input built from that image's real
+    similarity to this post.
+    """
+    await ensure_post_embedded(post_id)
+    post_subject = _get_post_subject(post_id)
+    candidate = _candidate_for_image(post_id, image_id)
+    return guard(
+        post_subject,
+        [candidate],
         sim_floor if sim_floor is not None else settings.sim_floor,
         conf_floor if conf_floor is not None else settings.conf_floor,
     )

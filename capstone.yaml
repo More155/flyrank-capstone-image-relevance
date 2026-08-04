@@ -1,14 +1,17 @@
-# Evaluator manifest — filled in progressively as each build phase lands.
-# Not submission-ready yet: `run` and `base_url` depend on the FastAPI app
-# (Step 5 / Phase 4). See IMPLEMENTATION_LOG.md for current status.
+# Evaluator manifest — every field is real as of Step 5.
 
 name: image-relevance-auto-tagging
 
-run: "TODO (Step 5): uvicorn api:app --reload"
+run: ".venv/bin/uvicorn api:app --reload --port 8000"
 seed: ".venv/bin/python -m scripts.seed_corpus && .venv/bin/python -m jobs.classify && .venv/bin/python -m jobs.embed_images && .venv/bin/python -m scripts.seed_posts"
 test: ".venv/bin/pytest -v"
-base_url: "TODO (Step 5): http://localhost:8000"
+base_url: "http://localhost:8000"
 
 endpoints:
+  - "GET /posts"
+  - "GET /images"
   - "GET /posts/{id}/images"
   - "POST /pairings/{id}/review"
+  - "GET /pairings"
+  - "GET /costs/summary"
+  - "GET /review"
