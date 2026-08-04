@@ -29,21 +29,31 @@ rough around the edges.
 
 ## Architecture
 
-```
-images ─(batch job)─► vision model (Gemini Flash) ─► {tags, caption, confidence}
-                                                        │
-                                                        ├─► image_tags
-                                                        └─► embed(caption) ─► image_vectors
+```mermaid
+flowchart TB
+    subgraph FlowA["Flow A — Ingestion (offline, batch, cost-tracked)"]
+        Images["Images<br/>(Unsplash corpus)"] --> Vision["Vision model<br/>(Gemini Flash)"]
+        Vision --> Tags["{tags, caption,<br/>confidence}"]
+        Tags --> ImageTags[("image_tags")]
+        Tags --> EmbedCaption["embed(caption)"]
+        EmbedCaption --> ImageVectors[("image_vectors")]
+    end
 
-posts ──────────────────────────────────────────────────► embed(post text) ─► post_vectors
+    subgraph FlowB["Flow B — Matching (online, per-request)"]
+        Posts["Posts"] --> EmbedPost["embed(post text)"]
+        EmbedPost --> PostVectors[("post_vectors")]
 
-GET /posts/:id/images
-  └─► similarity ranking (image_vectors × post_vector)
-        └─► mismatch guard (subject equality + similarity floor + confidence)
-              ├─► suggested image (ranked, explained)
-              └─► "no confident match" + reason
-                    └─► review API: approve / reject
-                          └─► one-page Jinja2 review UI (/review)
+        GetImages["GET /posts/:id/images"] --> Rank["Similarity ranking<br/>(image_vectors × post_vector)"]
+        Rank --> Guard{"Mismatch guard<br/>(subject equality +<br/>similarity floor + confidence)"}
+        Guard -->|suggest| Suggested["Suggested image<br/>(ranked, explained)"]
+        Guard -->|no_match| NoMatch["'No confident match'<br/>+ reason"]
+        Suggested --> Review["Review API<br/>approve / reject"]
+        NoMatch --> Review
+        Review --> UI["/review<br/>(Jinja2 page)"]
+    end
+
+    ImageVectors -.-> Rank
+    PostVectors -.-> Rank
 ```
 
 Two runtime flows, kept separate on purpose: ingestion (Flow A) is offline,
