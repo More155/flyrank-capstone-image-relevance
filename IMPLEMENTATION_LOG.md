@@ -517,4 +517,42 @@ Kept scope to the two remaining concrete items.
   **not done by this assistant** — `gh` isn't authenticated on this
   machine (checked again; still true), and renaming a GitHub repo isn't
   achievable through plain `git` without API access. Instructions handed
-  to the user instead.
+  to the user instead. *(Update: the user did this themselves — repo is
+  now `flyrank-capstone-image-relevance`.)*
+
+**Also fixed:** all 6 PRs had been merged into `step-1-mismatch-guard`
+rather than `main` — GitHub silently made it the default branch since no
+`main` was ever pushed. Built a real `main` from
+`origin/step-1-mismatch-guard` plus the 2 commits that landed after PR #6
+merged, verified it's byte-identical to the fully-polished branch tip,
+pushed it. User switched the GitHub default branch and deleted the 6
+now-redundant branches.
+
+---
+
+## UI polish pass (2026-08-03)
+
+**What changed:** `templates/review.html` redesigned — CSS custom
+properties with `prefers-color-scheme` dark mode, a stats header
+(pairing counts by status), the two control forms as proper cards, and
+the pairings list rebuilt as a responsive card grid (image, title,
+verdict/status badges, similarity, explanation, approve/reject) instead
+of a cramped table. `api.py`'s `review_page` now computes the stats
+dict. No backend logic changed — same routes, same data, same guard.
+
+**Found and fixed while verifying this, unrelated to the CSS work:** the
+Supabase project had auto-paused (`status: INACTIVE`) from being idle —
+free tier does this. Diagnosed from a `psycopg.OperationalError:
+... tenant/user ... not found` in the server log (read via a debug
+server this assistant started directly, after the user's own terminal
+process turned out to be a different tab this assistant couldn't read).
+Restored via the Supabase MCP's `restore_project`, confirmed working
+after the project came back up (~90s).
+
+**Verified:** DOM-level inspection (computed styles, bounding rects, an
+actual `naturalWidth: 800` on the loaded image) confirms the redesign
+renders correctly — the automated browser tool's screenshot capture had
+a compositing glitch on this specific page that made scrolled screenshots
+show a blank gap even though the underlying DOM was provably correct;
+not a real rendering bug. `pytest -v` — still 37/37, this was a
+template/CSS-only change.

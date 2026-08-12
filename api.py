@@ -174,10 +174,17 @@ def review_page(request: Request) -> HTMLResponse:
     posts = get_posts()
     images = get_images()
     pairings = list_pairings_for_review()
+    stats = {
+        "total": len(pairings),
+        "suggested": sum(1 for p in pairings if p["status"] == "suggested"),
+        "approved": sum(1 for p in pairings if p["status"] == "approved"),
+        "rejected": sum(1 for p in pairings if p["status"] == "rejected"),
+        "refused_by_guard": sum(1 for p in pairings if p["status"] == "refused_by_guard"),
+    }
     return templates.TemplateResponse(
         request,
         "review.html",
-        {"posts": posts, "images": images, "pairings": pairings},
+        {"posts": posts, "images": images, "pairings": pairings, "stats": stats},
     )
 
 

@@ -2,131 +2,250 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Image Relevance — Review</title>
 <style>
-  body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #ffffff; }
-  h1 { font-size: 1.4rem; }
-  h2 { font-size: 1.1rem; margin-top: 2.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-  .forms { display: flex; gap: 2rem; flex-wrap: wrap; }
-  form.inline { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
-  select, button, input[type=text] { padding: 0.35rem 0.5rem; font-size: 0.9rem; }
-  button { cursor: pointer; }
-  table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 0.85rem; }
-  th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
-  th { background: #f5f5f5; }
-  img.thumb { width: 88px; height: 88px; object-fit: cover; border-radius: 4px; display: block; }
-  .no-image-box { width: 88px; height: 88px; display: flex; align-items: center; justify-content: center; text-align: center; border: 1px dashed #ccc; border-radius: 4px; font-size: 0.7rem; color: #6c757d; padding: 0.25rem; box-sizing: border-box; }
-  .verdict-suggest { color: #157347; font-weight: 600; }
-  .verdict-flag { color: #b8860b; font-weight: 600; }
-  .verdict-no_match { color: #b02a37; font-weight: 600; }
-  .status-approved { color: #157347; }
-  .status-rejected { color: #b02a37; }
-  .status-refused_by_guard { color: #6c757d; font-style: italic; }
-  .status-suggested { color: #0d6efd; }
-  .explanation { max-width: 260px; }
-  .muted { color: #6c757d; font-size: 0.8rem; }
-  .intro { background: #f8f9fa; border: 1px solid #eee; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; font-size: 0.9rem; }
+  :root {
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #16181d;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --green: #15803d;   --green-soft: #dcfce7;
+    --red: #b91c1c;     --red-soft: #fee2e2;
+    --amber: #b45309;   --amber-soft: #fef3c7;
+    --blue: #1d4ed8;    --blue-soft: #dbeafe;
+    --gray: #4b5563;    --gray-soft: #eceef1;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0f14;
+      --card-bg: #171a21;
+      --text: #e7e9ee;
+      --muted: #9aa1ac;
+      --border: #2a2e37;
+      --accent: #818cf8;
+      --accent-soft: #262a52;
+      --green: #4ade80;  --green-soft: #143220;
+      --red: #f87171;    --red-soft: #3a1717;
+      --amber: #fbbf24;  --amber-soft: #3a2c08;
+      --blue: #60a5fa;   --blue-soft: #122c4d;
+      --gray: #9aa1ac;   --gray-soft: #1f232b;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+    line-height: 1.5;
+  }
+
+  a { color: var(--accent); }
+
+  header.page-header { margin-bottom: 2.25rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
+  .tagline { color: var(--muted); margin: 0 0 1.25rem; max-width: 62ch; }
+
+  .stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .stat {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0.6rem 1rem; box-shadow: var(--shadow); min-width: 92px;
+  }
+  .stat-value { display: block; font-size: 1.35rem; font-weight: 700; }
+  .stat-label { display: block; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.1rem; }
+
+  h2 { font-size: 1.05rem; margin: 0 0 0.9rem; }
+  section { margin-top: 2.5rem; }
+
+  .intro {
+    background: var(--accent-soft); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1rem 1.25rem; margin-bottom: 2rem; font-size: 0.9rem;
+  }
   .intro p { margin: 0.4rem 0; }
-  .intro code { background: #eee; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .intro code { background: rgba(127,127,127,0.18); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
+
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.25rem; box-shadow: var(--shadow);
+  }
+  .card-hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+  .control-form { display: flex; flex-direction: column; gap: 0.6rem; }
+  .control-form label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  select {
+    width: 100%; padding: 0.5rem 0.6rem; font-size: 0.9rem; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  }
+
+  .btn {
+    appearance: none; border: none; border-radius: 8px; padding: 0.55rem 1rem;
+    font-size: 0.88rem; font-weight: 600; cursor: pointer; margin-top: 0.35rem;
+    transition: opacity 0.15s ease;
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-outline { background: transparent; border: 1.5px solid var(--accent); color: var(--accent); }
+  .btn-approve { background: var(--green-soft); color: var(--green); }
+  .btn-reject { background: var(--red-soft); color: var(--red); }
+
+  .badge-demo {
+    display: inline-block; font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; background: var(--amber-soft); color: var(--amber);
+    padding: 0.12rem 0.45rem; border-radius: 999px; vertical-align: middle; margin-left: 0.4rem;
+  }
+
+  .pairing-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1.25rem;
+  }
+  .pairing-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column;
+  }
+  .pairing-media { width: 100%; aspect-ratio: 4 / 3; background: var(--gray-soft); }
+  .pairing-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pairing-media.no-image {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    color: var(--muted); font-size: 0.8rem; padding: 1rem;
+  }
+  .pairing-body { padding: 1rem 1.1rem; flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+  .pairing-title { font-weight: 600; font-size: 0.95rem; }
+  .badge-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+  .badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em; padding: 0.18rem 0.55rem; border-radius: 999px;
+  }
+  .badge-verdict-suggest  { background: var(--green-soft); color: var(--green); }
+  .badge-verdict-flag     { background: var(--amber-soft); color: var(--amber); }
+  .badge-verdict-no_match { background: var(--red-soft);   color: var(--red); }
+
+  .badge-status-suggested       { background: var(--blue-soft);  color: var(--blue); }
+  .badge-status-approved        { background: var(--green-soft); color: var(--green); }
+  .badge-status-rejected        { background: var(--red-soft);   color: var(--red); }
+  .badge-status-refused_by_guard{ background: var(--gray-soft);  color: var(--gray); }
+
+  .similarity { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+  .pairing-explanation { font-size: 0.85rem; margin: 0; }
+  .pairing-meta { font-size: 0.76rem; color: var(--muted); margin: 0; }
+  .pairing-actions { display: flex; gap: 0.5rem; padding: 0 1.1rem 1.1rem; }
+  .pairing-actions form { flex: 1; }
+  .pairing-actions .btn { width: 100%; margin-top: 0; }
+
+  .empty-state {
+    grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 2.5rem 1rem;
+    border: 1.5px dashed var(--border); border-radius: var(--radius);
+  }
 </style>
 </head>
 <body>
 
-<h1>Image Relevance &amp; Auto-Tagging — Review</h1>
-<p class="muted">Approve or reject a suggested pairing, and see exactly why the guard suggested or refused it.</p>
+<header class="page-header">
+  <h1>Image Relevance &amp; Auto-Tagging</h1>
+  <p class="tagline">Approve or reject a suggested pairing, and see exactly why the guard suggested or refused it.</p>
+  <div class="stats">
+    <div class="stat"><span class="stat-value">{{ stats.total }}</span><span class="stat-label">Pairings</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.suggested }}</span><span class="stat-label">Awaiting review</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.approved }}</span><span class="stat-label">Approved</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.rejected }}</span><span class="stat-label">Rejected</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.refused_by_guard }}</span><span class="stat-label">Refused by guard</span></div>
+  </div>
+</header>
 
 <div class="intro">
-  <p><strong>Get a suggestion</strong> asks the real system "what image best fits this post?" A good match comes back with a thumbnail, a similarity score, and Approve/Reject buttons. If nothing qualifies, it comes back as <code>no_match</code> with <strong>no image on purpose</strong> — the guard refuses to show a wrong picture rather than guess, so that row is supposed to look empty.</p>
-  <p><strong>Force a specific image</strong> is the demo trick: pick "Getting to Know the Red Fox" as the post and any <code>gray_wolf</code> image, then watch it get refused even though you forced it — the guard can't be tricked into endorsing a bad pairing.</p>
-  <p class="muted">Every click adds a new row below rather than replacing the old ones, so the table grows as you experiment.</p>
+  <p><strong>Get a suggestion</strong> asks the real system "what image best fits this post?" A good match comes back with a thumbnail, a similarity score, and Approve/Reject buttons. If nothing qualifies, it comes back <span class="badge badge-verdict-no_match">no_match</span> with <strong>no image on purpose</strong> — the guard refuses to show a wrong picture rather than guess.</p>
+  <p><strong>Force a specific image</strong> is the demo trick: pick "Getting to Know the Red Fox" as the post and any <code>gray_wolf</code> image, then watch it get refused even though you forced it.</p>
 </div>
 
-<div class="forms">
-  <div>
+<section class="controls">
+  <div class="card">
     <h2>Get a suggestion</h2>
-    <form class="inline" method="post" action="/review/suggest">
-      <select name="post_id" required>
+    <p class="card-hint">Ask the system what image best fits a post.</p>
+    <form class="control-form" method="post" action="/review/suggest">
+      <label for="suggest-post">Post</label>
+      <select id="suggest-post" name="post_id" required>
         {% for post in posts %}
         <option value="{{ post.id }}">{{ post.title }} ({{ post.subject }})</option>
         {% endfor %}
       </select>
-      <button type="submit">Suggest</button>
+      <button type="submit" class="btn btn-primary">Suggest</button>
     </form>
   </div>
 
-  <div>
-    <h2>Force a specific image (demo: force the wolf)</h2>
-    <form class="inline" method="post" action="/review/force">
-      <select name="post_id" required>
+  <div class="card">
+    <h2>Force a specific image<span class="badge-demo">demo</span></h2>
+    <p class="card-hint">Force any image onto any post — the guard runs the same way and can still refuse it.</p>
+    <form class="control-form" method="post" action="/review/force">
+      <label for="force-post">Post</label>
+      <select id="force-post" name="post_id" required>
         {% for post in posts %}
         <option value="{{ post.id }}">{{ post.title }} ({{ post.subject }})</option>
         {% endfor %}
       </select>
-      <select name="image_id" required>
+      <label for="force-image">Image</label>
+      <select id="force-image" name="image_id" required>
         {% for image in images %}
         <option value="{{ image.id }}">{{ image.subject }} — {{ image.id }}</option>
         {% endfor %}
       </select>
-      <button type="submit">Force</button>
+      <button type="submit" class="btn btn-outline">Force</button>
     </form>
   </div>
-</div>
+</section>
 
-<h2>Pairings</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Image</th>
-      <th>Post</th>
-      <th>Verdict</th>
-      <th>Reason</th>
-      <th>Explanation</th>
-      <th>Similarity</th>
-      <th>Status</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody>
+<section>
+  <h2>Pairings <span style="color: var(--muted); font-weight: 400;">— newest first</span></h2>
+  <div class="pairing-grid">
     {% for p in pairings %}
-    <tr>
-      <td>
-        {% if p.source_uri %}
-        <img class="thumb" src="{{ p.source_uri }}" alt="">
-        {% else %}
-        <div class="no-image-box">refused —<br>no image</div>
-        {% endif %}
-      </td>
-      <td>{{ p.title }}</td>
-      <td class="verdict-{{ p.verdict }}">{{ p.verdict }}</td>
-      <td>{{ p.reason }}</td>
-      <td class="explanation">{{ p.explanation }}</td>
-      <td>{{ "%.3f"|format(p.similarity) if p.similarity is not none else "—" }}</td>
-      <td class="status-{{ p.status }}">
-        {{ p.status }}
-        {% if p.note %}<br><span class="muted">{{ p.note }}</span>{% endif %}
-      </td>
-      <td>
-        {% if p.status == "suggested" %}
-        <form class="inline" method="post" action="/review/act">
+    <article class="pairing-card">
+      {% if p.source_uri %}
+      <div class="pairing-media"><img src="{{ p.source_uri }}" alt="{{ p.title }}"></div>
+      {% else %}
+      <div class="pairing-media no-image">Refused — no image</div>
+      {% endif %}
+      <div class="pairing-body">
+        <div class="pairing-title">{{ p.title }}</div>
+        <div class="badge-row">
+          <span class="badge badge-verdict-{{ p.verdict }}">{{ p.verdict }}</span>
+          <span class="badge badge-status-{{ p.status }}">{{ p.status }}</span>
+          {% if p.similarity is not none %}
+          <span class="similarity">{{ "%.0f"|format(p.similarity * 100) }}% match</span>
+          {% endif %}
+        </div>
+        <p class="pairing-explanation">{{ p.explanation }}</p>
+        <p class="pairing-meta">reason: {{ p.reason }}{% if p.note %} · note: {{ p.note }}{% endif %}</p>
+      </div>
+      {% if p.status == "suggested" %}
+      <div class="pairing-actions">
+        <form method="post" action="/review/act">
           <input type="hidden" name="pairing_id" value="{{ p.id }}">
           <input type="hidden" name="action" value="approved">
-          <button type="submit">Approve</button>
+          <button type="submit" class="btn btn-approve">Approve</button>
         </form>
-        <form class="inline" method="post" action="/review/act">
+        <form method="post" action="/review/act">
           <input type="hidden" name="pairing_id" value="{{ p.id }}">
           <input type="hidden" name="action" value="rejected">
-          <button type="submit">Reject</button>
+          <button type="submit" class="btn btn-reject">Reject</button>
         </form>
-        {% else %}
-        <span class="muted">—</span>
-        {% endif %}
-      </td>
-    </tr>
+      </div>
+      {% endif %}
+    </article>
     {% else %}
-    <tr><td colspan="8" class="muted">No pairings yet — get a suggestion above.</td></tr>
+    <div class="empty-state">No pairings yet — get a suggestion above to see the guard in action.</div>
     {% endfor %}
-  </tbody>
-</table>
+  </div>
+</section>
 
 </body>
 </html>
